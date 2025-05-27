@@ -19,3 +19,4 @@ docx2txt
 pandas
 docx
 langchain_google_genai
+langchain_huggingface

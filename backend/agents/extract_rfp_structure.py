@@ -104,9 +104,15 @@ def extract_rfp_structure(file_path):
     
     # Extract JSON from response
     try:
-        
         import re
-        content = response.candidates[0].content.parts[0].text if hasattr(response, "candidates") else response.content
+        # Safely get the content from the response
+        if hasattr(response, "candidates"):
+            content = response.candidates[0].content.parts[0].text
+        elif hasattr(response, "content"):
+            content = response.content
+        else:
+            content = str(response)
+
         match = re.search(r"```json\s*(\{.*\})\s*```", content, re.DOTALL)
         if match:
             json_str = match.group(1)
@@ -114,10 +120,13 @@ def extract_rfp_structure(file_path):
             # Fallback: extract from first '{' to last '}'
             json_start = content.find('{')
             json_end = content.rfind('}') + 1
+            if json_start == -1 or json_end == 0:
+                raise ValueError("No JSON object found in LLM response.")
             json_str = content[json_start:json_end]
         structured_data = json.loads(json_str)
         return structured_data
     except Exception as e:
         print(f"Error extracting JSON: {e}")
-        print(f"Response content: {response.content}")
+        print(f"Response content: {getattr(response, 'content', str(response))}")
+        from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=f"Failed to extract RFP structure: {str(e)}")

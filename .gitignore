@@ -1,8 +1,8 @@
 __pycache__
 *.pyc
 env/
-uploads/
-outputs/
-company_docs/
-vector_stores/
+# uploads/
+# outputs/
+# company_docs/
+# vector_stores/
 venv
