@@ -3,9 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from dotenv import load_dotenv
 import google.generativeai as genai
-from api import upload_rfp,upload_company_docs,response_for_each,final_rfp,download_doc
-from langchain_groq import ChatGroq
-
+from api import upload_rfp, upload_company_docs, response_for_each, final_rfp, download_doc, authendication
+from api.super_admin import super_admin
 # Initialize FastAPI app
 app = FastAPI(title="RFP Response Agent API")
 
@@ -49,8 +48,9 @@ app.include_router(upload_company_docs.router)
 app.include_router(response_for_each.router)
 app.include_router(final_rfp.router)
 app.include_router(download_doc.router)
+app.include_router(super_admin.router)
+app.include_router(authendication.router)
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    

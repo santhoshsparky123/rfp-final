@@ -1,6 +1,8 @@
-from pydantic import BaseModel
-from typing import Dict, Any
+from pydantic import BaseModel, EmailStr
+from typing import Dict, Any, Optional
+from datetime import datetime
 
+RFP_STORE = []
 # Pydantic models
 class RFPData(BaseModel):
     success: bool
@@ -16,5 +18,13 @@ class AgentResponse(BaseModel):
     full_proposal: str
     download_urls: Dict[str, str]
 
-# Store for processed RFPs
-RFP_STORE = {}
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    role: str  # "superadmin", "admin", "employee", "user"
+    access_start: Optional[datetime] = None
+    access_end: Optional[datetime] = None
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str

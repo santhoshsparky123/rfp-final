@@ -20,3 +20,8 @@ pandas
 docx
 langchain_google_genai
 langchain_huggingface
+supabase
+jwt
+passlib[bcrypt]
+jose
+psycopg2-binary
