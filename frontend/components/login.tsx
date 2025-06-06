@@ -9,10 +9,29 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Eye, EyeOff, Lock, Mail, User, Building, AlertCircle, CheckCircle, Brain } from "lucide-react"
+import {
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  User,
+  Building,
+  AlertCircle,
+  CheckCircle,
+  Brain,
+  Crown,
+  Shield,
+  Users,
+} from "lucide-react"
 
 interface LoginProps {
-  onLogin: (user: { id: string; email: string; role: "worker" | "user"; name: string; company?: string }) => void
+  onLogin: (user: {
+    id: string
+    email: string
+    role: "super_admin" | "admin" | "worker" | "user"
+    name: string
+    company?: string
+  }) => void
 }
 
 export default function Login({ onLogin }: LoginProps) {
@@ -51,27 +70,35 @@ export default function Login({ onLogin }: LoginProps) {
       const mockUsers = [
         {
           id: "1",
+          email: "superadmin@system.com",
+          password: "super123",
+          role: "super_admin" as const,
+          name: "System Administrator",
+          company: "RFP System",
+        },
+        {
+          id: "2",
+          email: "admin@company.com",
+          password: "admin123",
+          role: "admin" as const,
+          name: "Company Admin",
+          company: "TechCorp Solutions",
+        },
+        {
+          id: "3",
           email: "worker@company.com",
           password: "worker123",
           role: "worker" as const,
           name: "John Worker",
-          company: "TechCorp",
+          company: "TechCorp Solutions",
         },
         {
-          id: "2",
+          id: "4",
           email: "user@company.com",
           password: "user123",
           role: "user" as const,
           name: "Jane User",
           company: "ClientCorp",
-        },
-        {
-          id: "3",
-          email: "admin@rfp.com",
-          password: "admin123",
-          role: "worker" as const,
-          name: "Admin User",
-          company: "RFP Solutions",
         },
       ]
 
@@ -135,12 +162,15 @@ export default function Login({ onLogin }: LoginProps) {
     }
   }
 
-  const demoLogin = (role: "worker" | "user") => {
-    if (role === "worker") {
-      setLoginForm({ email: "worker@company.com", password: "worker123" })
-    } else {
-      setLoginForm({ email: "user@company.com", password: "user123" })
+  const demoLogin = (role: "super_admin" | "admin" | "worker" | "user") => {
+    const demoCredentials = {
+      super_admin: { email: "superadmin@system.com", password: "super123" },
+      admin: { email: "admin@company.com", password: "admin123" },
+      worker: { email: "worker@company.com", password: "worker123" },
+      user: { email: "user@company.com", password: "user123" },
     }
+
+    setLoginForm(demoCredentials[role])
   }
 
   return (
@@ -267,18 +297,38 @@ export default function Login({ onLogin }: LoginProps) {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => demoLogin("worker")}
-                      className="h-10 rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={() => demoLogin("super_admin")}
+                      className="h-12 rounded-xl border-purple-200 text-purple-700 hover:bg-purple-50 flex flex-col items-center py-2"
                     >
-                      Worker Demo
+                      <Crown className="w-4 h-4 mb-1" />
+                      <span className="text-xs">Super Admin</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => demoLogin("admin")}
+                      className="h-12 rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50 flex flex-col items-center py-2"
+                    >
+                      <Shield className="w-4 h-4 mb-1" />
+                      <span className="text-xs">Admin</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => demoLogin("worker")}
+                      className="h-12 rounded-xl border-green-200 text-green-700 hover:bg-green-50 flex flex-col items-center py-2"
+                    >
+                      <Users className="w-4 h-4 mb-1" />
+                      <span className="text-xs">Worker</span>
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => demoLogin("user")}
-                      className="h-10 rounded-xl border-green-200 text-green-700 hover:bg-green-50"
+                      className="h-12 rounded-xl border-orange-200 text-orange-700 hover:bg-orange-50 flex flex-col items-center py-2"
                     >
-                      User Demo
+                      <User className="w-4 h-4 mb-1" />
+                      <span className="text-xs">User</span>
                     </Button>
                   </div>
                 </div>

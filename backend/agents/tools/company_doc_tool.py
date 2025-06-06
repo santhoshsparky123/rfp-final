@@ -82,6 +82,6 @@ company_qa = RetrievalQA.from_chain_type(
 CompanyDocTool = Tool(
     name="CompanyDocTool",
     func=company_qa.run,
-    description="Useful for answering questions about company-related topics."
+    description="Useful for answering questions about company-related topics make it neat and clear according to the company document there are some stars in side the result avoid that start if giving the timeline and cost give it in table format."
 )
 

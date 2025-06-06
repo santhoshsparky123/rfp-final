@@ -9,39 +9,72 @@ from fastapi import APIRouter
 
 router = APIRouter(prefix="/api", tags=["RFP"])
 # API Endpoints
+# @router.post("/upload-rfp/", response_model=dict)
+# async def upload_rfp(file: UploadFile = File(...)):
+#     """Upload and process an RFP document"""
+#     print("hello1")
+#     # Generate unique ID for this RFP
+#     rfp_id = str(uuid.uuid4())
+    
+#     # Save the uploaded file
+#     file_extension = os.path.splitext(file.filename)[1]
+#     file_path = f"uploads/rfp_{rfp_id}{file_extension}"
+    
+#     with open(file_path, "wb") as buffer:
+#         shutil.copyfileobj(file.file, buffer)
+    
+#     try:
+#         # Extract structured data from RFP
+#         structured_data = extract_rfp_structure(file_path)
+        
+#         # Store the processed RFP
+#         RFP_STORE[rfp_id] = {
+#             "file_path": file_path,
+#             "structured_data": structured_data,
+#             "company_docs": [],
+#             "responses": {}
+#         }
+#         print(RFP_STORE)
+#         return {
+#             "rfp_id": rfp_id,
+#             "message": "RFP uploaded and processed successfully",
+#             "structured_data": structured_data
+#         }
+#     except Exception as e:
+#         # Clean up on error
+#         if os.path.exists(file_path):
+#             os.remove(file_path)
+#         raise HTTPException(status_code=500, detail=f"Error processing RFP: {str(e)}")
+
 @router.post("/upload-rfp/", response_model=dict)
 async def upload_rfp(file: UploadFile = File(...)):
-    """Upload and process an RFP document"""
-    print("hello1")
-    # Generate unique ID for this RFP
+    print(f"Received file: {file.filename if file else 'No file'}")
     rfp_id = str(uuid.uuid4())
-    
-    # Save the uploaded file
+
+    # Ensure uploads directory exists
+    os.makedirs("uploads", exist_ok=True)
+
     file_extension = os.path.splitext(file.filename)[1]
     file_path = f"uploads/rfp_{rfp_id}{file_extension}"
-    
+
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    
+
     try:
-        # Extract structured data from RFP
         structured_data = extract_rfp_structure(file_path)
-        
-        # Store the processed RFP
-        RFP_STORE[rfp_id] = {
-            "file_path": file_path,
-            "structured_data": structured_data,
-            "company_docs": [],
-            "responses": {}
-        }
-        print(RFP_STORE)
+        # RFP_STORE[rfp_id] = {
+        #     "file_path": file_path,
+        #     "structured_data": structured_data,
+        #     "company_docs": [],
+        #     "responses": {}
+        # }
+        # print(RFP_STORE)
         return {
             "rfp_id": rfp_id,
             "message": "RFP uploaded and processed successfully",
             "structured_data": structured_data
         }
     except Exception as e:
-        # Clean up on error
         if os.path.exists(file_path):
             os.remove(file_path)
         raise HTTPException(status_code=500, detail=f"Error processing RFP: {str(e)}")
