@@ -60,3 +60,12 @@ async def upload_file(
     db.refresh(document)
     return {"message": "File uploaded successfully", "document_id": document.id}
 
+@router.post("/create-company")
+async def create_company(
+    company:Company,
+    db: Session = Depends(get_db)
+):
+    
+  
+    
+
