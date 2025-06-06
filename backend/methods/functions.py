@@ -38,7 +38,6 @@ SECRET_KEY = os.getenv("JWT_SECRET")
 def get_db():
     db = SessionLocal()
     try:
-        print("it is connected")
         yield db
     finally:
         db.close()

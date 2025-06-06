@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum as SQLEnum, LargeBinary
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from typing import Optional
@@ -45,28 +45,25 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(SQLEnum(UserRole))
-    is_active = Column(Boolean, default=True)
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     # Relationships
-    company = relationship("Company", back_populates="admin", foreign_keys=[company_id])
-    created_users = relationship("User", remote_side=[id])
+    company = relationship("Company", back_populates="employees")
 
 class RFP(Base):
     __tablename__ = "rfps"
     
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True)
-    description = Column(Text)
-    file_path = Column(String)
+    filename = Column(String, index=True)
+    # description = Column(Text)
+    # file_path = Column(String)
+    content_type = Column(String)
     status = Column(String, default="pending")
     uploaded_by = Column(Integer, ForeignKey("users.id"))
     company_id = Column(Integer, ForeignKey("companies.id"))
-    response_content = Column(Text)
+    # response_content = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+    file_data = Column(LargeBinary)
     # Relationships
     company = relationship("Company", back_populates="rfps")
     uploader = relationship("User")

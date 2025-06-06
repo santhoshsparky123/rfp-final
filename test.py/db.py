@@ -330,26 +330,26 @@ async def create_employee(
     
     return {"message": "Employee created successfully", "employee_id": employee.id}
 
-@app.post("/admin/create-user")
-async def create_user(
-    user_data: UserCreate,
-    current_user: User = Depends(require_role([UserRole.ADMIN])),
-    db: Session = Depends(get_db)
-):
-    hashed_password = get_password_hash(user_data.password)
-    user = User(
-        username=user_data.username,
-        email=user_data.email,
-        hashed_password=hashed_password,
-        role=UserRole.USER,
-        company_id=current_user.company_id,
-        created_by=current_user.id
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+# @app.post("/admin/create-user")
+# async def create_user(
+#     user_data: UserCreate,
+#     current_user: User = Depends(require_role([UserRole.ADMIN])),
+#     db: Session = Depends(get_db)
+# ):
+#     hashed_password = get_password_hash(user_data.password)
+#     user = User(
+#         username=user_data.username,
+#         email=user_data.email,
+#         hashed_password=hashed_password,
+#         role=UserRole.USER,
+#         company_id=current_user.company_id,
+#         created_by=current_user.id
+#     )
+#     db.add(user)
+#     db.commit()
+#     db.refresh(user)
     
-    return {"message": "User created successfully", "user_id": user.id}
+#     return {"message": "User created successfully", "user_id": user.id}
 
 @app.delete("/admin/remove-employee/{employee_id}")
 async def remove_employee(

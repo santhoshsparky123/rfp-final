@@ -32,5 +32,4 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "user_id": user.id,
         "role": user.role,
-        "company_id": user.company_id
     }

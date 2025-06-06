@@ -25,3 +25,4 @@ jwt
 passlib[bcrypt]
 jose
 psycopg2-binary
+pycryptodome

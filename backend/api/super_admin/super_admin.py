@@ -91,3 +91,15 @@ async def activate_subscription(
     db.commit()
     
     return {"message": "Subscription activated", "expires_at": end_date}
+
+@router.post("company/{company_id}")
+async def get_company(
+    company_id:int,
+    # current_user: User = Depends(require_role([UserRole.SUPER_ADMIN])),
+    db: Session = Depends(get_db)
+):
+    company = db.query(Company).filter(Company.id==company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    return {"subdomain":company.subdomain}
