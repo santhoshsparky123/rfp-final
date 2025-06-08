@@ -31,11 +31,11 @@ class Company(Base):
     subscription_end = Column(DateTime)
     subscription_status = Column(SQLEnum(SubscriptionStatus), default=SubscriptionStatus.ACTIVE)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
-    employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
-    rfps = relationship("RFP", back_populates="company")
+    userid = Column(Integer, ForeignKey("users.id"))
+    # # Relationships
+    # admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
+    # employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
+    # rfps = relationship("RFP", back_populates="company")
 
 class User(Base):
     __tablename__ = "users"
@@ -45,10 +45,10 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(SQLEnum(UserRole))
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
+    # company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
     
-    # Relationships
-    company = relationship("Company", back_populates="employees")
+    # # Relationships
+    # company = relationship("Company", back_populates="employees")
 
 class RFP(Base):
     __tablename__ = "rfps"
@@ -65,8 +65,8 @@ class RFP(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     file_data = Column(LargeBinary)
     # Relationships
-    company = relationship("Company", back_populates="rfps")
-    uploader = relationship("User")
+    # company = relationship("Company", back_populates="rfps")
+    # uploader = relationship("User")
 
 
 # Pydantic Models
@@ -79,7 +79,16 @@ class UserCreate(BaseModel):
 class CompanyCreate(BaseModel):
     name: str
     subdomain: str
+    no_of_employee: int
+    amount: int
+    userid: int
+    currency: str
 
+class OrderRequest(BaseModel):
+    amount: int
+    currency: str
+    receipt: str
+    
 class SubscriptionUpdate(BaseModel):
     months: int
 
@@ -92,7 +101,6 @@ class Token(BaseModel):
     token_type: str
     user_id: int
     role: str
-    company_id: Optional[int] = None
 
 class UserResponse(BaseModel):
     id: int
