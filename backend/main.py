@@ -34,7 +34,6 @@ load_dotenv()
 # Configure with your Gemini API key
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
-# os.environ["GROQ_API_KEY"] = "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"
 # Use the Gemini 1.5 Flash model
 model = genai.GenerativeModel("gemini-1.5-flash")
 
@@ -55,7 +54,7 @@ app.include_router(download_doc.router)
 app.include_router(super_admin.router)
 app.include_router(authendication.router)
 app.include_router(admin.router)
-# app.include_router(all_company.router)
+app.include_router(all_company.router)
 app.include_router(user.router)
 app.include_router(company_router)
 

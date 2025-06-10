@@ -6,6 +6,10 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr
 from enum import Enum
+from sqlalchemy.dialects.postgresql import JSONB  # Only if you're using PostgreSQL
+from pgvector.sqlalchemy import Vector
+
+
 
 Base = declarative_base()
 
@@ -37,6 +41,11 @@ class Company(Base):
     # admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
     # employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
     # rfps = relationship("RFP", back_populates="company")
+    userid = Column(Integer, ForeignKey("users.id"))
+    # # Relationships
+    # admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
+    # employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
+    # rfps = relationship("RFP", back_populates="company")
 
 class User(Base):
     __tablename__ = "users"
@@ -48,6 +57,8 @@ class User(Base):
     role = Column(SQLEnum(UserRole), default=UserRole.USER, nullable=False)
     # company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
     
+    # # Relationships
+    # company = relationship("Company", back_populates="employees")
     # # Relationships
     # company = relationship("Company", back_populates="employees")
 
@@ -66,6 +77,8 @@ class RFP(Base):
     created_at = Column(DateTime, default=datetime.now)
     file_data = Column(LargeBinary)
     # Relationships
+    # company = relationship("Company", back_populates="rfps")
+    # uploader = relationship("User")
     # company = relationship("Company", back_populates="rfps")
     # uploader = relationship("User")
 

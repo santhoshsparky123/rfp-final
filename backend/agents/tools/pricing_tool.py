@@ -69,7 +69,7 @@ company_vector = FAISS.load_local(
 )
 
 # Gemini via LangChain wrapper
-llm = ChatGroq(model="llama-3.3-70b-versatile")
+llm = ChatGroq(model="llama-3.3-70b-versatile",groq_api_key = "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")
 
 # Retrieval chain
 company_qa = RetrievalQA.from_chain_type(
