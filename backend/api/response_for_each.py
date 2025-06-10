@@ -105,7 +105,7 @@ from fastapi import APIRouter, HTTPException
 # from langchain_community.chat_models import ChatGroq
 from langchain.agents import initialize_agent
 from langchain.agents.agent_types import AgentType
-from agents.tools.company_doc_tool import CompanyDocTool
+from agents.tools.company_doc_tool import get_company_qa_tool
 from agents.tools.pricing_tool import PricingDocTool
 from agents.tools.wikipedia_tool import WikipediaTool
 from agents.tools.fall_back_tool import FallbackLLMTool
@@ -114,6 +114,8 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
+from methods.functions import Depends,require_role,Session,get_db
+from models.schema import User,UserRole, Employee, Company
 
 load_dotenv()
 router = APIRouter(prefix="/api", tags=["RFP"])
@@ -122,7 +124,11 @@ router = APIRouter(prefix="/api", tags=["RFP"])
 # os.environ["GROQ_API_KEY"] = "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"
 
 @router.post("/generate-response", response_model=dict)
-async def generate_response(json_data: dict):
+async def generate_response(
+    json_data: dict,
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.EMPLOYEE])),
+    db: Session = Depends(get_db)
+):
     try:
         if "rfp_id" not in json_data:
             raise HTTPException(status_code=400, detail="RFP ID not found in structured data")
@@ -140,11 +146,18 @@ async def generate_response(json_data: dict):
             "requirements": []
         }
 
+        company_id = None
+        if(current_user.role=="employee"):
+            company_id = db.query(Employee).filter(Employee.company_id==current_user.id).first().company_id
+        else:
+            company_id = db.query(Company).filter(Company.userid == current_user.id).first()
+
+        CompanyDocTool = get_company_qa_tool(company_id)
         # Tools
-        tools = [CompanyDocTool, PricingDocTool, WikipediaTool, FallbackLLMTool]
+        tools = [CompanyDocTool,WikipediaTool, FallbackLLMTool]
 
 # Use Google Generative AI model
-        llm = ChatGroq(model="llama-3.3-70b-versatile")
+        llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key = "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")
 
         agent_executor = initialize_agent(
             tools,

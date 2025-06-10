@@ -26,3 +26,7 @@ passlib[bcrypt]
 jose
 psycopg2-binary
 pycryptodome
+
+sqlalchemy
+pgvector
+sentence-transformers

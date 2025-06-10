@@ -5,6 +5,10 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr
 from enum import Enum
+from sqlalchemy.dialects.postgresql import JSONB  # Only if you're using PostgreSQL
+from pgvector.sqlalchemy import Vector
+
+
 
 Base = declarative_base()
 
@@ -68,7 +72,24 @@ class RFP(Base):
     # company = relationship("Company", back_populates="rfps")
     # uploader = relationship("User")
 
+class Employee(Base):
+    __tablename__ = "employee"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    company_id = Column(Integer, ForeignKey("companies.id"))
+    rfps_assigned = Column(JSONB, default=list)
+    created_at = Column(DateTime, default = datetime.utcnow)
 
+# class Document(Base):
+#     __tablename__ = "documents"
+
+#     id = Column(Integer, primary_key=True, index=True)
+#     company_id = Column(Integer,ForeignKey("Companies.id"))
+#     content = Column(Text, nullable=False)
+#     embedding = Column(Vector(384))  # 384 dimensions for all-MiniLM-L6-v2
+    
 # Pydantic Models
 class UserCreate(BaseModel):
     username: str
@@ -76,6 +97,13 @@ class UserCreate(BaseModel):
     password: str
     role: UserRole
 
+class EmployeeCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    role: UserRole
+    company_id: int
+    
 class CompanyCreate(BaseModel):
     name: str
     subdomain: str

@@ -17,6 +17,7 @@ class LoginRequest(BaseModel):
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == request.username).first()
     if not user or not verify_password(request.password, user.hashed_password):
+        
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password"

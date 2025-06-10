@@ -43,6 +43,7 @@ async def upload_file(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+    
     # Fetch the company to get its subdomain
     company = db.query(Company).filter(Company.id == companyid).first()
     if not company:
