@@ -1,5 +1,6 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum as SQLEnum, LargeBinary
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from typing import Optional
@@ -31,11 +32,11 @@ class Company(Base):
     subscription_end = Column(DateTime)
     subscription_status = Column(SQLEnum(SubscriptionStatus), default=SubscriptionStatus.ACTIVE)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
-    employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
-    rfps = relationship("RFP", back_populates="company")
+    userid = Column(Integer, ForeignKey("users.id"))
+    # # Relationships
+    # admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
+    # employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
+    # rfps = relationship("RFP", back_populates="company")
 
 class User(Base):
     __tablename__ = "users"
@@ -44,33 +45,45 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    role = Column(SQLEnum(UserRole))
-    is_active = Column(Boolean, default=True)
-    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    role = Column(SQLEnum(UserRole), default=UserRole.USER, nullable=False)
+    # company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
     
-    # Relationships
-    company = relationship("Company", back_populates="admin", foreign_keys=[company_id])
-    created_users = relationship("User", remote_side=[id])
+    # # Relationships
+    # company = relationship("Company", back_populates="employees")
 
 class RFP(Base):
     __tablename__ = "rfps"
     
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True)
-    description = Column(Text)
-    file_path = Column(String)
+    filename = Column(String, index=True)
+    # description = Column(Text)
+    # file_path = Column(String)
+    content_type = Column(String)
     status = Column(String, default="pending")
     uploaded_by = Column(Integer, ForeignKey("users.id"))
     company_id = Column(Integer, ForeignKey("companies.id"))
-    response_content = Column(Text)
+    # response_content = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+    file_data = Column(LargeBinary)
+    # Relationships
+    # company = relationship("Company", back_populates="rfps")
+    # uploader = relationship("User")
+
+
+class Employee(Base):
+    __tablename__ = "employees"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    role = Column(String, default="employee")
+    company_id = Column(Integer, ForeignKey("companies.id"))
+    rfps_assigned = Column(JSON, default=[])
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    company = relationship("Company", back_populates="rfps")
-    uploader = relationship("User")
-
+    # company = relationship("Company", back_populates="employees")
 
 # Pydantic Models
 class UserCreate(BaseModel):
@@ -79,10 +92,32 @@ class UserCreate(BaseModel):
     password: str
     role: UserRole
 
+class EmployeeCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    role: UserRole
+    company_id: int
+
 class CompanyCreate(BaseModel):
     name: str
     subdomain: str
+    no_of_employee: int
+    amount: int
+    userid: int
+    currency: str
 
+from pydantic import BaseModel
+
+class OrderRequest(BaseModel):
+    amount: int
+    currency: str
+    receipt: str
+    userid: int
+    company_name: str
+    subdomain: str
+
+    
 class SubscriptionUpdate(BaseModel):
     months: int
 
@@ -95,7 +130,6 @@ class Token(BaseModel):
     token_type: str
     user_id: int
     role: str
-    company_id: Optional[int] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -103,5 +137,13 @@ class UserResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    company_id: Optional[int] = None
+    created_at: datetime
+    
+class EmployeeResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    role: UserRole
     company_id: Optional[int] = None
     created_at: datetime

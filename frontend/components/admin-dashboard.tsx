@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useState, useCallback } from "react" // Added useCallback
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,6 +34,7 @@ import {
   Download,
   Eye,
   Activity,
+  RollerCoaster,
 } from "lucide-react"
 
 interface AdminDashboardProps {
@@ -42,9 +43,11 @@ interface AdminDashboardProps {
     email: string
     role: "admin"
     name: string
-    company?: string
+    company?: string // Assuming company is a string name
+    company_id?: number // Added company_id
   }
   onLogout: () => void
+  token: string // Added token prop for authorization
 }
 
 interface Worker {
@@ -52,10 +55,11 @@ interface Worker {
   name: string
   email: string
   created_at: string
-  status: "active" | "inactive"
+  status: "active" | "inactive" // This might need to align with your backend's `is_active` boolean
   last_login?: string
   rfps_processed: number
   current_projects: number
+  role: "employee" // Added role to align with backend
 }
 
 interface WorkerActivity {
@@ -68,69 +72,9 @@ interface WorkerActivity {
   status: "completed" | "in_progress" | "failed"
 }
 
-export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
-  const [workers, setWorkers] = useState<Worker[]>([
-    {
-      id: "1",
-      name: "Alice Johnson",
-      email: "alice@techcorp.com",
-      created_at: "2024-01-15",
-      status: "active",
-      last_login: "2024-01-20",
-      rfps_processed: 12,
-      current_projects: 2,
-    },
-    {
-      id: "2",
-      name: "Bob Smith",
-      email: "bob@techcorp.com",
-      created_at: "2024-01-10",
-      status: "active",
-      last_login: "2024-01-19",
-      rfps_processed: 8,
-      current_projects: 1,
-    },
-    {
-      id: "3",
-      name: "Carol Davis",
-      email: "carol@techcorp.com",
-      created_at: "2024-01-05",
-      status: "inactive",
-      last_login: "2024-01-18",
-      rfps_processed: 15,
-      current_projects: 0,
-    },
-  ])
-
-  const [activities, setActivities] = useState<WorkerActivity[]>([
-    {
-      id: "1",
-      worker_id: "1",
-      worker_name: "Alice Johnson",
-      action: "Generated RFP Response",
-      rfp_title: "Cloud Infrastructure Proposal",
-      timestamp: "2024-01-20 14:30",
-      status: "completed",
-    },
-    {
-      id: "2",
-      worker_id: "2",
-      worker_name: "Bob Smith",
-      action: "Uploaded RFP Document",
-      rfp_title: "Software Development Services",
-      timestamp: "2024-01-20 13:15",
-      status: "in_progress",
-    },
-    {
-      id: "3",
-      worker_id: "1",
-      worker_name: "Alice Johnson",
-      action: "Downloaded Final Proposal",
-      rfp_title: "Data Analytics Platform",
-      timestamp: "2024-01-20 11:45",
-      status: "completed",
-    },
-  ])
+export default function AdminDashboard({ user, onLogout, token }: AdminDashboardProps) {
+  const [workers, setWorkers] = useState<Worker[]>([]) // Initialize as empty
+  const [activities, setActivities] = useState<WorkerActivity[]>([]) // Initialize as empty, will need backend for this
 
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -143,6 +87,57 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
     password: "",
   })
 
+  // Function to fetch workers
+  const fetchWorkers = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/admin/employees", {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      // Filter employees by company_id if present in user object
+      const filteredWorkers = user.company_id
+        ? data.filter((worker: any) => worker.company_id === user.company_id)
+        : data;
+
+      // Map backend data to frontend Worker interface
+      setWorkers(
+        filteredWorkers.map((worker: any) => ({
+          id: worker.id.toString(),
+          name: worker.name,
+          email: worker.email,
+          created_at: new Date(worker.created_at).toISOString().split("T")[0],
+          status: worker.is_active ? "active" : "inactive", // Assuming backend has is_active
+          last_login: worker.last_login ? new Date(worker.last_login).toISOString().split("T")[0] : undefined,
+          rfps_processed: worker.rfps_processed || 0, // Assuming these fields exist or default to 0
+          current_projects: worker.current_projects || 0, // Assuming these fields exist or default to 0
+          role: worker.role
+        })),
+      )
+    } catch (err: any) {
+      setError(`Failed to fetch workers: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }, [token, user.company_id]) // Added user.company_id to dependencies
+
+  useEffect(() => {
+    if (token) {
+      fetchWorkers()
+      // You would also fetch activities here if you had a backend endpoint for them
+      // For now, activities remain hardcoded or empty
+    }
+  }, [token, fetchWorkers])
+
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -150,40 +145,114 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
     setSuccess(null)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      const worker: Worker = {
-        id: Date.now().toString(),
-        name: newWorker.name,
+      // Debug: log payload
+      const companyIdResponse = await fetch("http://localhost:8000/api/company_id/"+user.id)
+      const companyId = await companyIdResponse.json()
+      console.log("[CreateWorker] Fetched company_id:", companyId)
+      const payload = {
+        username: newWorker.name,
         email: newWorker.email,
-        created_at: new Date().toISOString().split("T")[0],
-        status: "active",
-        rfps_processed: 0,
-        current_projects: 0,
+        password: newWorker.password,
+        company_id: companyId.company_id, // Pass company_id from logged-in admin
+        role: "employee", // Corrected to lowercase 'role'
+      };
+      console.log("[CreateWorker] Payload:", payload);
+      const response = await fetch("http://localhost:8000/api/admin/create-employee", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        let errorMsg = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          console.error("[CreateWorker] Backend error:", errorData);
+          errorMsg = errorData.detail || JSON.stringify(errorData) || errorMsg;
+        } catch (e) {
+          // If not JSON, just use text
+          try {
+            const text = await response.text();
+            errorMsg = text || errorMsg;
+          } catch {}
+        }
+        throw new Error(errorMsg);
       }
 
-      setWorkers([...workers, worker])
+      const data = await response.json()
       setSuccess("Worker created successfully!")
       setNewWorker({ name: "", email: "", password: "" })
       setShowCreateDialog(false)
-    } catch (err) {
-      setError("Failed to create worker. Please try again.")
+      fetchWorkers() // Refresh the list of workers
+    } catch (err: any) {
+      setError(`Failed to create worker: ${err.message}`)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleToggleStatus = (workerId: string) => {
-    setWorkers(
-      workers.map((worker) =>
-        worker.id === workerId ? { ...worker, status: worker.status === "active" ? "inactive" : "active" } : worker,
-      ),
-    )
+  const handleToggleStatus = async (workerId: string, currentStatus: "active" | "inactive") => {
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      // Assuming you will add an endpoint like PUT /api/admin/employees/{employee_id}/status
+      const response = await fetch(`/api/admin/employees/${workerId}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          is_active: currentStatus === "inactive", // Toggle status
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+      }
+
+      setSuccess("Worker status updated successfully!")
+      fetchWorkers() // Refresh the list of workers
+    } catch (err: any) {
+      setError(`Failed to update worker status: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleDeleteWorker = (workerId: string) => {
-    setWorkers(workers.filter((worker) => worker.id !== workerId))
+
+  const handleDeleteWorker = async (workerId: string) => {
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const response = await fetch(`/api/admin/remove-employee/${workerId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+      }
+
+      setSuccess("Worker removed successfully!")
+      fetchWorkers() // Refresh the list of workers
+    } catch (err: any) {
+      setError(`Failed to remove worker: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const totalRFPs = workers.reduce((sum, worker) => sum + worker.rfps_processed, 0)
@@ -473,7 +542,7 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleToggleStatus(worker.id)}
+                                onClick={() => handleToggleStatus(worker.id, worker.status)}
                                 className="rounded-lg"
                               >
                                 {worker.status === "active" ? "Deactivate" : "Activate"}

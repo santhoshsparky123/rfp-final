@@ -14,6 +14,7 @@ import Login from "@/components/login"
 import SuperAdminDashboard from "@/components/super-admin-dashboard"
 import AdminDashboard from "@/components/admin-dashboard"
 import UserDashboard from "@/components/user-dashboard"
+import EmployeeDashboard from "@/components/employee-dashboard"
 import RFPUpload from "@/components/rfp-upload"
 import CompanyDocsUpload from "@/components/company-docs-upload"
 import ResponseGeneration from "@/components/response-generation"
@@ -49,7 +50,7 @@ interface CompanyDocsStatus {
 interface UserType {
   id: string
   email: string
-  role: "super_admin" | "admin" | "worker" | "user"
+  role: "super_admin" | "admin" | "employee" | "user"
   name: string
   company?: string
 }
@@ -64,7 +65,7 @@ export default function RFPProcessingApp() {
   const [finalProposalGenerated, setFinalProposalGenerated] = useState(false)
 
   const steps =
-    user?.role === "worker"
+    user?.role === "employee"
       ? [
           { id: "upload-rfp", title: "Upload RFP", icon: Upload, completed: !!rfpData },
           { id: "generate", title: "Generate Response", icon: Brain, completed: !!generatedResponse },
@@ -85,6 +86,7 @@ export default function RFPProcessingApp() {
 
   const handleLogout = () => {
     setUser(null)
+    localStorage.removeItem("token")
     // Reset all state
     setActiveTab("upload-rfp")
     setRFPData(null)
@@ -96,9 +98,9 @@ export default function RFPProcessingApp() {
 
   const handleRFPUpload = (data: RFPData) => {
     setRFPData(data)
-    if (user?.role === "worker") {
-      // For workers, automatically fetch company docs and proceed to generate
-      fetchCompanyDocsForWorker()
+    if (user?.role === "employee") {
+      // For employees, automatically fetch company docs and proceed to generate
+      fetchCompanyDocsForEmployee()
       setActiveTab("generate")
     } else {
       // For users, check existing docs as before
@@ -107,13 +109,13 @@ export default function RFPProcessingApp() {
     }
   }
 
-  const fetchCompanyDocsForWorker = async () => {
+  const fetchCompanyDocsForEmployee = async () => {
     try {
-      // Workers have access to pre-uploaded company docs
+      // Employees have access to pre-uploaded company docs
       setCompanyDocsStatus({
         exists: true,
         count: 5, // Assume some docs exist
-        vector_store_id: "worker_default",
+        vector_store_id: "employee_default",
         last_updated: new Date().toISOString(),
       })
     } catch (error) {
@@ -160,22 +162,36 @@ export default function RFPProcessingApp() {
     return <Login onLogin={handleLogin} />
   }
 
+  // Show appropriate dashboard based on role
+  switch (user.role) {
+    case "super_admin":
+      return <SuperAdminDashboard user={user} onLogout={handleLogout} />
+    case "admin":
+      return <AdminDashboard user={user} onLogout={handleLogout} />
+    case "employee":
+      return <EmployeeDashboard user={user} onLogout={handleLogout} />
+    case "user":
+      return <UserDashboard user={user} onLogout={handleLogout} />
+    default:
+      return <Login onLogin={handleLogin} />
+  }
+
   // Show super admin dashboard for super admin role
-  if (user.role === "super_admin") {
-    return <SuperAdminDashboard user={user} onLogout={handleLogout} />
-  }
+  // if (user.role === "super_admin") {
+  //   return <SuperAdminDashboard user={user} onLogout={handleLogout} />
+  // }
 
-  // Show admin dashboard for admin role
-  if (user.role === "admin") {
-    return <AdminDashboard user={user} onLogout={handleLogout} />
-  }
+  // // Show admin dashboard for admin role (users who created companies)
+  // if (user.role === "admin") {
+  //   return <AdminDashboard user={user} onLogout={handleLogout} />
+  // }
 
-  // Show user dashboard for user role
-  if (user.role === "user") {
-    return <UserDashboard user={user} onLogout={handleLogout} />
-  }
+  // // Show user dashboard for user role (regular users who haven't created companies)
+  // if (user.role === "user") {
+  //   return <UserDashboard user={user} onLogout={handleLogout} />
+  // }
 
-  // Show full worker dashboard for worker role
+  // Show full employee dashboard for employee role
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-blue-50">
       {/* Professional Header */}
@@ -201,7 +217,7 @@ export default function RFPProcessingApp() {
                   <div className="text-sm font-semibold text-gray-900">{user.name}</div>
                   <div className="text-xs text-gray-500">{user.company}</div>
                 </div>
-                <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200">Worker</Badge>
+                <Badge className="bg-green-100 text-green-700 hover:bg-green-200">Employee</Badge>
               </div>
               <Button variant="outline" onClick={handleLogout} className="rounded-xl border-gray-300 hover:bg-gray-50">
                 <LogOut className="w-4 h-4 mr-2" />
@@ -281,7 +297,7 @@ export default function RFPProcessingApp() {
                 const isCompleted = step.completed
                 const isDisabled =
                   (step.id === "upload-docs" && !rfpData) ||
-                  (step.id === "generate" && (user?.role === "worker" ? !rfpData : !companyDocsStatus.exists)) ||
+                  (step.id === "generate" && (user?.role === "employee" ? !rfpData : !companyDocsStatus.exists)) ||
                   (step.id === "edit" && !generatedResponse) ||
                   (step.id === "final" && !editedResponse)
 
@@ -325,7 +341,7 @@ export default function RFPProcessingApp() {
                 <RFPUpload onUploadSuccess={handleRFPUpload} />
               </TabsContent>
 
-              {user?.role !== "worker" && (
+              {user?.role !== "employee" && (
                 <TabsContent value="upload-docs" className="mt-0">
                   <CompanyDocsUpload onUploadSuccess={handleCompanyDocsUpload} existingDocsStatus={companyDocsStatus} />
                 </TabsContent>

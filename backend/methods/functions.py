@@ -36,9 +36,9 @@ SECRET_KEY = os.getenv("JWT_SECRET")
 
 # Database dependency
 def get_db():
+    print("connected")
     db = SessionLocal()
     try:
-        print("it is connected")
         yield db
     finally:
         db.close()
@@ -79,13 +79,13 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise credentials_exception
     
     # Check if user's company subscription is active (for non-super-admin users)
-    if user.role != UserRole.SUPER_ADMIN and user.company_id:
-        company = db.query(Company).filter(Company.id == user.company_id).first()
-        if not company or company.subscription_status != SubscriptionStatus.ACTIVE:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Company subscription expired or inactive"
-            )
+    # if user.role != UserRole.SUPER_ADMIN and user.company_id:
+    #     company = db.query(Company).filter(Company.id == user.company_id).first()
+    #     if not company or company.subscription_status != SubscriptionStatus.ACTIVE:
+    #         raise HTTPException(
+    #             status_code=status.HTTP_403_FORBIDDEN,
+    #             detail="Company subscription expired or inactive"
+    #         )
     
     return user
 
