@@ -107,7 +107,7 @@ from langchain.agents import initialize_agent
 from langchain.agents.agent_types import AgentType
 from agents.tools.company_doc_tool import get_company_qa_tool
 from agents.tools.pricing_tool import PricingDocTool
-from agents.tools.wikipedia_tool import WikipediaTool
+#from agents.tools.wikipedia_tool import WikipediaTool
 from agents.tools.fall_back_tool import FallbackLLMTool
 import asyncio
 import os
@@ -176,8 +176,14 @@ async def generate_response(
         for section in sections:
             print(f"Processing section: {section}")
             query = f"Answer this RFP section based on our docs: {section['title']} - {section['content']}"
-            answer = agent_executor.run(query)
-
+            try:
+                answer = agent_executor.run(query)
+            except Exception as e:
+                import requests
+                if isinstance(e, requests.exceptions.ConnectionError):
+                    answer = "Wikipedia lookup failed due to network error."
+                else:
+                    answer = f"Error occurred: {str(e)}"
             final_output["sections"].append({
                 "id": section["id"],
                 "title": section["title"],

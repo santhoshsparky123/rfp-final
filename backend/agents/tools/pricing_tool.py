@@ -82,5 +82,5 @@ company_qa = RetrievalQA.from_chain_type(
 PricingDocTool = Tool(
     name="PricingDocTool",
     func=company_qa.run,
-    description="Useful for answering questions about cost, resource allocation, or pricing based on roles and durations."
+    description="Useful for answering questions about cost, resource allocation, or pricing based on roles and durations  make it neat and clear according to the company document there are some stars in side the result avoid that start if giving the timeline and cost give it in table format the format alignment need to be neat and clear the alignment must be neat and easy to read."
 )

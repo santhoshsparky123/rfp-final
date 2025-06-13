@@ -34,49 +34,57 @@ async def create_employee(
         name=employee_data.name,
         email=employee_data.email,
         hashed_password=hashed_password,
+        role=UserRole.EMPLOYEE,
+        company_id=employee_data.company_id,  # Assuming current_user has company_id
+
+        created_at=datetime.now()
         company_id=employee_data.company_id,
     )
-    db.add(employee)
+    db.add(employee_entry)
     db.commit()
-    db.refresh(employee)
-    
-    return {"message": "Employee created successfully", "employee_id": employee.id}
+    db.refresh(employee_entry)
+    return {"message": "Employee created successfully", "employee_db_id": employee_entry.id}
 
 @router.delete("/admin/remove-employee/{employee_id}")
 async def remove_employee(
     employee_id: int,
-    current_user: User = Depends(require_role([UserRole.ADMIN])),
+    # current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: Session = Depends(get_db)
 ):
     employee = db.query(Employee).filter(
         Employee.id == employee_id
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id
     ).first()
-    
+
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    
+
     db.delete(employee)
     db.commit()
-    
+
     return {"message": "Employee removed successfully"}
+
 
 @router.get("/all-employee/{company_id}")
 async def allEmployee(
     company_id:int,
     db:Session = Depends(get_db)
 ):
-    employees = db.query(Employee).filter(Employee.company_id==company_id)
+    employees = db.query(Employee).filter(Employee.company_id==company_id).all() # Added .all() to fetch all results
     return {"employees": [
         {
             "id": r.id,
-            "name":r.name,
-            "rfps_assigned": r.rfps_assigned
+            "name": r.name,
+            "email": r.email, # Added email for display
+            "rfps_assigned": json.loads(r.rfps_assigned) if r.rfps_assigned else [], # Parse JSON string
+            "created_at": r.created_at.isoformat() if r.created_at else None # Add created_at
         } for r in employees
     ]}
-        
-@router.get("/getcompanyid/{userid}")
-async def getcompanyid(
-    userid: int,
+
+@router.get("/company_id/{user_id}")
+async def get_company_id(
+    user_id: int,
     db: Session = Depends(get_db)
 ):
     company = db.query(Company).filter(Company.userid == userid).first()
@@ -152,9 +160,7 @@ async def rfp_status(
             if not employee:
                 continue  # or handle error
 
-            # If rfps_assigned is None or empty, initialize it
-            if not employee.rfps_assigned:
-                employee.rfps_assigned = []
+    current_assigned_rfps = json.loads(employee.rfps_assigned) if employee.rfps_assigned else []
 
             # Add new RFP IDs to the existing list, avoiding duplicates
             for rfpid in rfps:

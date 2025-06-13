@@ -56,13 +56,28 @@ export default function CompanyDocsUpload({ onUploadSuccess, existingDocsStatus 
     setSuccess(null)
 
     try {
-      // Simulate file upload and processing
-      await new Promise((resolve) => setTimeout(resolve, 4000))
+      const formData = new FormData()
+      Array.from(selectedFiles).forEach((file) => {
+        formData.append("files", file)
+      })
+
+      const response = await fetch("http://localhost:8000/api/upload-company-docs", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Failed to upload company documents")
+      }
+
+      const data = await response.json()
+      console.log("Company Docs Upload Response:", data)
 
       const newStatus = {
         exists: true,
         count: existingDocsStatus.count + selectedFiles.length,
-        vector_store_id: existingDocsStatus.vector_store_id || `vs_${Date.now()}`,
+        vector_store_id: data.vector_store_id,
         last_updated: new Date().toISOString(),
       }
 
@@ -74,7 +89,8 @@ export default function CompanyDocsUpload({ onUploadSuccess, existingDocsStatus 
       if (fileInput) fileInput.value = ""
       setSelectedFiles(null)
     } catch (err) {
-      setError("Failed to upload documents. Please try again.")
+      console.error("Upload error:", err)
+      setError(err instanceof Error ? err.message : "Failed to upload documents. Please try again.")
     } finally {
       setUploading(false)
     }
@@ -86,7 +102,8 @@ export default function CompanyDocsUpload({ onUploadSuccess, existingDocsStatus 
     setSuccess(null)
 
     try {
-      // Simulate clearing documents
+      // Note: You may need to implement a clear endpoint in your backend
+      // For now, we'll simulate clearing documents
       await new Promise((resolve) => setTimeout(resolve, 2000))
 
       const clearedStatus = {

@@ -1,9 +1,18 @@
 import os
-import httpx
-import razorpay
-from fastapi import APIRouter, Depends, File, Depends,HTTPException,UploadFile, Form
+import hmac
+import hashlib
+import uuid
+from datetime import datetime, timedelta
+
+from fastapi import (
+    APIRouter, Depends, File, HTTPException,
+    UploadFile, Form, Request
+)
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
+import httpx
+import razorpay
+
 from methods.functions import get_password_hash, get_db
 from models.schema import User, UserRole, RFP, Company, CompanyCreate, SubscriptionStatus, OrderRequest
 from methods.functions import require_role  # Make sure this import path is correct
@@ -13,31 +22,39 @@ import uuid
 
 router = APIRouter(prefix="/api", tags=["user"])
 
-# ✅ Correctly define the request body using Pydantic
+# -----------------------------------
+# Pydantic models
+# -----------------------------------
 class Register(BaseModel):
     username: str
     password: str
-    email: EmailStr  # Optional: stricter email validation
+    email: EmailStr
 
+
+# -----------------------------------
+# User Registration
+# -----------------------------------
 @router.post("/user/register")
 async def user_register(user: Register, db: Session = Depends(get_db)):
-    hashed_password = get_password_hash(user.password)
+    try:
+        hashed_password = get_password_hash(user.password)
+        new_user = User(
+            username=user.username,
+            email=user.email,
+            hashed_password=hashed_password,
+            role=UserRole.USER,
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"message": "User created successfully", "user_id": new_user.id}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"User already exits")
 
-    # ✅ Create the user ORM object
-    new_user = User(
-        username=user.username,
-        email=user.email,
-        hashed_password=hashed_password,
-        role=UserRole.USER,
-    )
-
-    # ✅ Add and commit to the database
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)  # ✅ Refresh the correct object
-
-    return {"message": "User created successfully", "user_id": new_user.id}
-
+# -----------------------------------
+# File Upload
+# -----------------------------------
 @router.post("/user/upload")
 async def upload_file(
     userid: int = Form(...),
@@ -45,8 +62,6 @@ async def upload_file(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    
-    # Fetch the company to get its subdomain
     company = db.query(Company).filter(Company.id == companyid).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -100,72 +115,30 @@ async def upload_file(
     }
 
 
-class temp(BaseModel):
-    username:str
-    
-@router.post("/user/test")
-async def create_c(company_data: CompanyCreate,
-    # current_user: User = Depends(require_role([UserRole.USER])),
-    db: Session = Depends(get_db)):
-    print("hello1")
-    # Create Razorpay order
-    # RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
-    # RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
-
-    order_payload = {
-        "amount": company_data.amount,
-        "currency": company_data.currency,
-        "receipt": f"userid_{company_data.userid}"
-    }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "http://localhost:8000/api/create-order/",
-            json=order_payload,
-            headers={"Content-Type": "application/json"}
-        )
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail="Failed to create order")
-        order_data = response.json()
-    print("hello2")
-    # Update user role
-    if user := db.query(User).filter(User.id == company_data.userid).first():
-        user.role = UserRole.ADMIN
-        db.commit()
-        db.refresh(user)
-    print("hello3")
-    now = datetime.now()
-    new_company = Company(
-        name=company_data.name,
-        subdomain=company_data.subdomain,
-        subscription_start=now,
-        subscription_end=now+timedelta(30),
-        subscription_status=SubscriptionStatus.ACTIVE,
-        userid=company_data.userid
-    )
-    db.add(new_company)
-    db.commit()
-    db.refresh(new_company)
-
-    print("hello4")
-    return {
-        "message": "Company created successfully",
-        "company_id": new_company.id,
-        "order": order_data
-    }
-    
+# -----------------------------------
+# Create Razorpay Order
+# -----------------------------------
 @router.post("/create-order/")
 def create_order(order: OrderRequest):
     RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
     RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
-    razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+    client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+    notes = {
+        "userid": str(order.userid),
+        "company_name": order.company_name,
+        "subdomain": order.subdomain,
+        "amount": str(order.amount),
+        "currency": order.currency
+    }
 
     try:
-        razorpay_order = razorpay_client.order.create({
+        razorpay_order = client.order.create({
             "amount": order.amount,
             "currency": order.currency,
             "receipt": order.receipt,
-            "payment_capture": 1
+            "payment_capture": 1,
+            "notes": notes
         })
         return {
             "order_id": razorpay_order["id"],

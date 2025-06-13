@@ -7,6 +7,9 @@ from api import response_for_each, final_rfp, download_doc, authendication, all_
 # from api.super_admin import super_admin
 from api.admin import admin
 from api.user import user
+from api.employee import employee
+from api.all_company import router as company_router
+
 # Initialize FastAPI app
 app = FastAPI(title="RFP Response Agent API")
 
@@ -51,8 +54,14 @@ app.include_router(response_for_each.router)
 # app.include_router(super_admin.router)
 # app.include_router(authendication.router)
 app.include_router(admin.router)
+<<<<<<< HEAD
 # app.include_router(all_company.router)
+=======
+app.include_router(employee.router)
+>>>>>>> b9b0be69f9c63cefa9488cd5c9ce54f1df862f11
 app.include_router(user.router)
+app.include_router(company_router)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -24,7 +24,7 @@ export default function ProposalEditor({ generatedResponse, onResponseEdited }: 
     setEditedResponse({
       ...editedResponse,
       sections: editedResponse.sections.map((section: any) =>
-        section.id === sectionId ? { ...section, ai_response: newContent } : section,
+        section.id === sectionId ? { ...section, answer: newContent } : section,
       ),
     })
   }
@@ -33,16 +33,16 @@ export default function ProposalEditor({ generatedResponse, onResponseEdited }: 
     setEditedResponse({
       ...editedResponse,
       questions: editedResponse.questions.map((question: any) =>
-        question.id === questionId ? { ...question, ai_answer: newAnswer } : question,
+        question.id === questionId ? { ...question, answer: newAnswer } : question,
       ),
     })
   }
 
-  const handleRequirementEdit = (reqId: number, newExplanation: string) => {
+  const handleRequirementEdit = (reqId: number, newEvidence: string) => {
     setEditedResponse({
       ...editedResponse,
       requirements: editedResponse.requirements.map((req: any) =>
-        req.id === reqId ? { ...req, ai_explanation: newExplanation } : req,
+        req.id === reqId ? { ...req, evidence: newEvidence } : req,
       ),
     })
   }
@@ -121,20 +121,16 @@ export default function ProposalEditor({ generatedResponse, onResponseEdited }: 
         <CardContent className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <div className="text-sm font-medium text-gray-700">RFP Title</div>
-              <div className="text-lg font-semibold text-gray-900">{editedResponse.metadata.title}</div>
+              <div className="text-sm font-medium text-gray-700">RFP ID</div>
+              <div className="text-lg font-semibold text-gray-900">{editedResponse.rfp_id}</div>
             </div>
             <div>
-              <div className="text-sm font-medium text-gray-700">AI Confidence</div>
-              <Badge className="bg-green-100 text-green-700">
-                {Math.round(editedResponse.metadata.ai_confidence * 100)}%
-              </Badge>
+              <div className="text-sm font-medium text-gray-700">Sections</div>
+              <Badge className="bg-blue-100 text-blue-700">{editedResponse.sections?.length || 0}</Badge>
             </div>
             <div>
-              <div className="text-sm font-medium text-gray-700">Generated</div>
-              <div className="text-sm text-gray-600">
-                {new Date(editedResponse.metadata.generated_at).toLocaleString()}
-              </div>
+              <div className="text-sm font-medium text-gray-700">Questions</div>
+              <Badge className="bg-purple-100 text-purple-700">{editedResponse.questions?.length || 0}</Badge>
             </div>
           </div>
         </CardContent>
@@ -152,35 +148,36 @@ export default function ProposalEditor({ generatedResponse, onResponseEdited }: 
                 className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-xl py-3 font-medium transition-all duration-200"
               >
                 <FileText className="w-4 h-4 mr-2" />
-                Sections ({editedResponse.sections.length})
+                Sections ({editedResponse.sections?.length || 0})
               </TabsTrigger>
               <TabsTrigger
                 value="questions"
                 className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-xl py-3 font-medium transition-all duration-200"
               >
                 <MessageSquare className="w-4 h-4 mr-2" />
-                Questions ({editedResponse.questions.length})
+                Questions ({editedResponse.questions?.length || 0})
               </TabsTrigger>
               <TabsTrigger
                 value="requirements"
                 className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-xl py-3 font-medium transition-all duration-200"
               >
                 <List className="w-4 h-4 mr-2" />
-                Requirements ({editedResponse.requirements.length})
+                Requirements ({editedResponse.requirements?.length || 0})
               </TabsTrigger>
             </TabsList>
           </div>
 
           <div className="p-6">
             <TabsContent value="sections" className="mt-0 space-y-6">
-              {editedResponse.sections.map((section: any) => (
+              {editedResponse.sections?.map((section: any) => (
                 <Card key={section.id} className="border border-gray-200">
                   <CardHeader className="bg-gray-50">
                     <CardTitle className="text-lg text-gray-900">{section.title}</CardTitle>
+                    <p className="text-sm text-gray-600">{section.content}</p>
                   </CardHeader>
                   <CardContent className="p-4">
                     <Textarea
-                      value={section.ai_response}
+                      value={section.answer || ""}
                       onChange={(e) => handleSectionEdit(section.id, e.target.value)}
                       className="min-h-32 rounded-xl border-gray-300 focus:border-orange-500 focus:ring-orange-500"
                       placeholder="Edit the AI-generated response for this section..."
@@ -191,14 +188,18 @@ export default function ProposalEditor({ generatedResponse, onResponseEdited }: 
             </TabsContent>
 
             <TabsContent value="questions" className="mt-0 space-y-6">
-              {editedResponse.questions.map((question: any) => (
+              {editedResponse.questions?.map((question: any) => (
                 <Card key={question.id} className="border border-gray-200">
                   <CardHeader className="bg-gray-50">
-                    <CardTitle className="text-lg text-gray-900">{question.question}</CardTitle>
+                    <CardTitle className="text-lg text-gray-900">{question.text}</CardTitle>
+                    <div className="flex gap-2 mt-2">
+                      <Badge variant="outline">{question.type}</Badge>
+                      {question.word_limit && <Badge variant="outline">{question.word_limit} words max</Badge>}
+                    </div>
                   </CardHeader>
                   <CardContent className="p-4">
                     <Textarea
-                      value={question.ai_answer}
+                      value={question.answer || ""}
                       onChange={(e) => handleQuestionEdit(question.id, e.target.value)}
                       className="min-h-32 rounded-xl border-gray-300 focus:border-orange-500 focus:ring-orange-500"
                       placeholder="Edit the AI-generated answer to this question..."
@@ -209,28 +210,27 @@ export default function ProposalEditor({ generatedResponse, onResponseEdited }: 
             </TabsContent>
 
             <TabsContent value="requirements" className="mt-0 space-y-6">
-              {editedResponse.requirements.map((req: any) => (
+              {editedResponse.requirements?.map((req: any) => (
                 <Card key={req.id} className="border border-gray-200">
                   <CardHeader className="bg-gray-50">
                     <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg text-gray-900">{req.requirement}</CardTitle>
-                      <Badge
-                        className={`${
-                          req.compliance_status === "compliant"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {req.compliance_status}
-                      </Badge>
+                      <CardTitle className="text-lg text-gray-900">{req.text}</CardTitle>
+                      <div className="flex gap-2">
+                        <Badge
+                          className={`${req.satisfied ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
+                        >
+                          {req.satisfied ? "Satisfied" : "Not Satisfied"}
+                        </Badge>
+                        {req.mandatory && <Badge variant="outline">Mandatory</Badge>}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="p-4">
                     <Textarea
-                      value={req.ai_explanation}
+                      value={req.evidence || ""}
                       onChange={(e) => handleRequirementEdit(req.id, e.target.value)}
                       className="min-h-32 rounded-xl border-gray-300 focus:border-orange-500 focus:ring-orange-500"
-                      placeholder="Edit the AI-generated explanation for this requirement..."
+                      placeholder="Edit the evidence for this requirement..."
                     />
                   </CardContent>
                 </Card>

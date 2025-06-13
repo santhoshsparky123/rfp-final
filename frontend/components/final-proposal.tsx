@@ -17,6 +17,7 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
   const [generated, setGenerated] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [downloadUrls, setDownloadUrls] = useState<{ docx?: string; pdf?: string }>({})
 
   const handleGenerateFinal = async () => {
     setGenerating(true)
@@ -24,30 +25,62 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
     setSuccess(null)
 
     try {
-      // Simulate final proposal generation
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+      const response = await fetch("http://localhost:8000/api/final-rfp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(editedResponse),
+      })
 
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Failed to generate final proposal")
+      }
+
+      const data = await response.json()
+      console.log("Final Proposal Response:", data)
+
+      setDownloadUrls(data)
       setGenerated(true)
       setSuccess("Final proposal generated successfully!")
       onProposalGenerated()
     } catch (err) {
-      setError("Failed to generate final proposal. Please try again.")
+      console.error("Generation error:", err)
+      setError(err instanceof Error ? err.message : "Failed to generate final proposal. Please try again.")
     } finally {
       setGenerating(false)
     }
   }
 
-  const handleDownload = () => {
-    // Simulate download
-    const link = document.createElement("a")
-    link.href = "#"
-    link.download = `${editedResponse.metadata.title}-final-proposal.pdf`
-    link.click()
+  const handleDownload = async (docType: "docx" | "pdf") => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/download-document/${editedResponse.rfp_id}/${docType}`, {
+        method: "GET",
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to download document")
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${editedResponse.rfp_id}_proposal.${docType}`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("Download error:", err)
+      setError("Failed to download document. Please try again.")
+    }
   }
 
   const handlePreview = () => {
-    // Simulate preview
-    window.open("#", "_blank")
+    // Open preview in new tab
+    window.open(`http://localhost:8000/api/download-document/${editedResponse.rfp_id}/pdf`, "_blank")
   }
 
   if (!editedResponse) {
@@ -97,22 +130,20 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
         <CardContent className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-blue-50 rounded-xl">
-              <div className="text-2xl font-bold text-blue-600">{editedResponse.sections.length}</div>
+              <div className="text-2xl font-bold text-blue-600">{editedResponse.sections?.length || 0}</div>
               <div className="text-sm text-blue-700">Sections</div>
             </div>
             <div className="text-center p-4 bg-purple-50 rounded-xl">
-              <div className="text-2xl font-bold text-purple-600">{editedResponse.questions.length}</div>
+              <div className="text-2xl font-bold text-purple-600">{editedResponse.questions?.length || 0}</div>
               <div className="text-sm text-purple-700">Questions</div>
             </div>
             <div className="text-center p-4 bg-green-50 rounded-xl">
-              <div className="text-2xl font-bold text-green-600">{editedResponse.requirements.length}</div>
+              <div className="text-2xl font-bold text-green-600">{editedResponse.requirements?.length || 0}</div>
               <div className="text-sm text-green-700">Requirements</div>
             </div>
             <div className="text-center p-4 bg-orange-50 rounded-xl">
-              <div className="text-2xl font-bold text-orange-600">
-                {Math.round(editedResponse.metadata.ai_confidence * 100)}%
-              </div>
-              <div className="text-sm text-orange-700">Confidence</div>
+              <div className="text-2xl font-bold text-orange-600">{editedResponse.rfp_id}</div>
+              <div className="text-sm text-orange-700">RFP ID</div>
             </div>
           </div>
         </CardContent>
@@ -130,7 +161,7 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
               <div>
                 <h3 className="text-xl font-bold text-gray-900 mb-2">Ready to Generate Final Proposal</h3>
                 <p className="text-gray-600 mb-6">
-                  Your edited response is ready. Click below to generate the final PDF proposal document.
+                  Your edited response is ready. Click below to generate the final Word and PDF proposal documents.
                 </p>
               </div>
 
@@ -163,34 +194,61 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="p-4 bg-white rounded-xl border border-green-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <FileText className="w-8 h-8 text-green-600" />
-                  <div>
-                    <div className="font-semibold text-gray-900">
-                      {editedResponse.metadata.title}-final-proposal.pdf
+            <div className="space-y-3">
+              {downloadUrls.docx && (
+                <div className="p-4 bg-white rounded-xl border border-green-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-8 h-8 text-blue-600" />
+                      <div>
+                        <div className="font-semibold text-gray-900">{editedResponse.rfp_id}_proposal.docx</div>
+                        <div className="text-sm text-gray-600">Microsoft Word Document</div>
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-600">Generated on {new Date().toLocaleDateString()}</div>
+                    <Badge className="bg-blue-100 text-blue-700">Word</Badge>
                   </div>
                 </div>
-                <Badge className="bg-green-100 text-green-700">Ready</Badge>
-              </div>
+              )}
+
+              {downloadUrls.pdf && (
+                <div className="p-4 bg-white rounded-xl border border-green-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-8 h-8 text-purple-600" />
+                      <div>
+                        <div className="font-semibold text-gray-900">{editedResponse.rfp_id}_proposal.pdf</div>
+                        <div className="text-sm text-gray-600">PDF Document</div>
+                      </div>
+                    </div>
+                    <Badge className="bg-purple-100 text-purple-700">PDF</Badge>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">
               <Button
-                onClick={handleDownload}
-                className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-xl"
+                onClick={() => handleDownload("docx")}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download Word
+              </Button>
+              <Button
+                onClick={() => handleDownload("pdf")}
+                className="flex-1 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 rounded-xl"
               >
                 <Download className="w-4 h-4 mr-2" />
                 Download PDF
               </Button>
-              <Button onClick={handlePreview} variant="outline" className="rounded-xl">
+            </div>
+
+            <div className="flex gap-3">
+              <Button onClick={handlePreview} variant="outline" className="flex-1 rounded-xl">
                 <Eye className="w-4 h-4 mr-2" />
-                Preview
+                Preview PDF
               </Button>
-              <Button variant="outline" className="rounded-xl">
+              <Button variant="outline" className="flex-1 rounded-xl">
                 <Share className="w-4 h-4 mr-2" />
                 Share
               </Button>
@@ -228,7 +286,7 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
           </div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full" />
-            Company information and credentials
+            Available in both Word and PDF formats
           </div>
         </div>
       </div>

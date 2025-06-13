@@ -37,7 +37,7 @@ def extract_rfp_structure(file_path):
     
     # Use the Gemini 1.5 Flash model
     llm = genai.GenerativeModel("gemini-1.5-flash")
-
+    print("hello llm")
     # Using LLM to extract structured data from RFP
     prompt = (
         """
@@ -101,7 +101,7 @@ def extract_rfp_structure(file_path):
     # chain = prompt | llm
     # response = chain.invoke({"text": combined_text})
     response = llm.generate_content(prompt)
-    
+    print("hello by llm")
     # Extract JSON from response
     try:
         import re
@@ -124,6 +124,7 @@ def extract_rfp_structure(file_path):
                 raise ValueError("No JSON object found in LLM response.")
             json_str = content[json_start:json_end]
         structured_data = json.loads(json_str)
+        print("structure data", structured_data)
         return structured_data
     except Exception as e:
         print(f"Error extracting JSON: {e}")

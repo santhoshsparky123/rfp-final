@@ -38,38 +38,34 @@ export default function ResponseGeneration({ rfpData, onResponseGenerated }: Res
     ]
 
     try {
+      // Show progress steps
       for (let i = 0; i < steps.length; i++) {
         setCurrentStep(steps[i].step)
         setProgress(((i + 1) / steps.length) * 100)
         await new Promise((resolve) => setTimeout(resolve, steps[i].duration))
       }
 
-      // Mock generated response
-      const generatedResponse = {
-        rfp_id: rfpData.rfp_id,
-        metadata: {
-          ...rfpData.structured_data.metadata,
-          generated_at: new Date().toISOString(),
-          ai_confidence: 0.92,
+      // Make actual API call to generate response
+      const response = await fetch("http://localhost:8000/api/generate-response", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-        sections: rfpData.structured_data.sections.map((section: any) => ({
-          ...section,
-          ai_response: `AI-generated response for ${section.title}. This section addresses the requirements with detailed explanations, technical specifications, and relevant company capabilities.`,
-        })),
-        questions: rfpData.structured_data.questions.map((question: any) => ({
-          ...question,
-          ai_answer: `Comprehensive AI-generated answer to: "${question.question}". This response leverages company documents and industry best practices to provide a thorough and professional answer.`,
-        })),
-        requirements: rfpData.structured_data.requirements.map((req: any) => ({
-          ...req,
-          compliance_status: "compliant",
-          ai_explanation: `Our solution fully meets this requirement: "${req.requirement}". Here's how we address it with specific technical details and implementation approach.`,
-        })),
+        body: JSON.stringify(rfpData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Failed to generate response")
       }
+
+      const generatedResponse = await response.json()
+      console.log("Generated Response:", generatedResponse)
 
       onResponseGenerated(generatedResponse)
     } catch (err) {
-      setError("Failed to generate response. Please try again.")
+      console.error("Generation error:", err)
+      setError(err instanceof Error ? err.message : "Failed to generate response. Please try again.")
     } finally {
       setGenerating(false)
       setProgress(0)
@@ -118,7 +114,9 @@ export default function ResponseGeneration({ rfpData, onResponseGenerated }: Res
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="text-3xl font-bold text-blue-600 mb-1">{rfpData.structured_data.sections.length}</div>
+            <div className="text-3xl font-bold text-blue-600 mb-1">
+              {rfpData.structured_data?.sections?.length || 0}
+            </div>
             <p className="text-sm text-gray-600">Sections to address</p>
           </CardContent>
         </Card>
@@ -131,7 +129,9 @@ export default function ResponseGeneration({ rfpData, onResponseGenerated }: Res
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="text-3xl font-bold text-purple-600 mb-1">{rfpData.structured_data.questions.length}</div>
+            <div className="text-3xl font-bold text-purple-600 mb-1">
+              {rfpData.structured_data?.questions?.length || 0}
+            </div>
             <p className="text-sm text-gray-600">Questions to answer</p>
           </CardContent>
         </Card>
@@ -144,7 +144,9 @@ export default function ResponseGeneration({ rfpData, onResponseGenerated }: Res
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="text-3xl font-bold text-green-600 mb-1">{rfpData.structured_data.requirements.length}</div>
+            <div className="text-3xl font-bold text-green-600 mb-1">
+              {rfpData.structured_data?.requirements?.length || 0}
+            </div>
             <p className="text-sm text-gray-600">Requirements to meet</p>
           </CardContent>
         </Card>
@@ -180,8 +182,8 @@ export default function ResponseGeneration({ rfpData, onResponseGenerated }: Res
             <div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Ready to Generate Response</h3>
               <p className="text-gray-600 mb-6">
-                Click the button below to start the AI-powered response generation process. This typically takes 30-60
-                seconds.
+                Click the button below to start the AI-powered response generation process. This may take several
+                minutes.
               </p>
             </div>
 

@@ -6,3 +6,6 @@ env/
 # company_docs/
 # vector_stores/
 venv
+alembic/
+outputs/
+uploads/

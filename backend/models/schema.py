@@ -1,5 +1,6 @@
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Enum as SQLEnum, LargeBinary
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from typing import Optional
@@ -40,6 +41,11 @@ class Company(Base):
     # admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
     # employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
     # rfps = relationship("RFP", back_populates="company")
+    userid = Column(Integer, ForeignKey("users.id"))
+    # # Relationships
+    # admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
+    # employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
+    # rfps = relationship("RFP", back_populates="company")
 
 class User(Base):
     __tablename__ = "users"
@@ -48,9 +54,11 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    role = Column(SQLEnum(UserRole))
+    role = Column(SQLEnum(UserRole), default=UserRole.USER, nullable=False)
     # company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)
     
+    # # Relationships
+    # company = relationship("Company", back_populates="employees")
     # # Relationships
     # company = relationship("Company", back_populates="employees")
 
@@ -71,11 +79,13 @@ class RFP(Base):
 
 
 class Employee(Base):
-    __tablename__ = "employee"
+    __tablename__ = "employees"
+    
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
+    name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+    role = Column(String, default="employee")
     company_id = Column(Integer, ForeignKey("companies.id"))
     rfps_assigned = Column(JSONB, default=list)
     created_at = Column(DateTime, default = datetime.utcnow)
@@ -92,7 +102,7 @@ class EmployeeCreate(BaseModel):
     email: EmailStr
     password: str
     company_id: int
-    
+
 class CompanyCreate(BaseModel):
     name: str
     subdomain: str
@@ -101,10 +111,16 @@ class CompanyCreate(BaseModel):
     userid: int
     currency: str
 
+from pydantic import BaseModel
+
 class OrderRequest(BaseModel):
     amount: int
     currency: str
     receipt: str
+    userid: int
+    company_name: str
+    subdomain: str
+
     
 class SubscriptionUpdate(BaseModel):
     months: int
@@ -125,5 +141,13 @@ class UserResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    company_id: Optional[int] = None
+    created_at: datetime
+    
+class EmployeeResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    role: UserRole
     company_id: Optional[int] = None
     created_at: datetime

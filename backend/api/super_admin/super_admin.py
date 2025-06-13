@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api", tags=["RFP"])
 @router.post("/setup/create-super-admin")
 async def create_super_admin(
     username: str = "superadmin",
-    password: str = "changeme123",
+    password: str = "123456",
     email: str = "admin@rfpplatform.com",
     db: Session = Depends(get_db)
 ):

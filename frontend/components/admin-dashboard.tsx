@@ -2,14 +2,13 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -17,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
@@ -30,10 +30,12 @@ import {
   Mail,
   Calendar,
   FileText,
-  Brain,
   Download,
-  Eye,
+  Eye, // Keep Eye if you plan to use it elsewhere, otherwise remove
   Activity,
+  PlusCircle,
+  LayoutDashboard, // For dashboard icon
+  RefreshCw, // For unassign action
 } from "lucide-react"
 
 interface AdminDashboardProps {
@@ -43,8 +45,10 @@ interface AdminDashboardProps {
     role: "admin"
     name: string
     company?: string
+    company_id?: number
   }
   onLogout: () => void
+  token: string
 }
 
 interface Worker {
@@ -56,83 +60,33 @@ interface Worker {
   last_login?: string
   rfps_processed: number
   current_projects: number
+  role: "employee"
+  // Assuming the backend provides rfps_assigned as an array of RFP IDs
+  rfps_assigned?: number[]
 }
 
-interface WorkerActivity {
-  id: string
-  worker_id: string
-  worker_name: string
-  action: string
-  rfp_title: string
-  timestamp: string
-  status: "completed" | "in_progress" | "failed"
+interface RFP {
+  id: number
+  filename: string
+  content_type: string
+  status: "pending" | "in_progress" | "completed" | "assigned" // Explicitly define status types
+  uploaded_by: number
+  uploaded_by_name: string
+  uploaded_by_email: string
+  created_at: string
+  assigned_to_worker_id?: string // Optional: To store the ID of the worker it's assigned to
+  assigned_to_worker_name?: string // Optional: To store the name of the worker it's assigned to
 }
 
-export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
-  const [workers, setWorkers] = useState<Worker[]>([
-    {
-      id: "1",
-      name: "Alice Johnson",
-      email: "alice@techcorp.com",
-      created_at: "2024-01-15",
-      status: "active",
-      last_login: "2024-01-20",
-      rfps_processed: 12,
-      current_projects: 2,
-    },
-    {
-      id: "2",
-      name: "Bob Smith",
-      email: "bob@techcorp.com",
-      created_at: "2024-01-10",
-      status: "active",
-      last_login: "2024-01-19",
-      rfps_processed: 8,
-      current_projects: 1,
-    },
-    {
-      id: "3",
-      name: "Carol Davis",
-      email: "carol@techcorp.com",
-      created_at: "2024-01-05",
-      status: "inactive",
-      last_login: "2024-01-18",
-      rfps_processed: 15,
-      current_projects: 0,
-    },
-  ])
-
-  const [activities, setActivities] = useState<WorkerActivity[]>([
-    {
-      id: "1",
-      worker_id: "1",
-      worker_name: "Alice Johnson",
-      action: "Generated RFP Response",
-      rfp_title: "Cloud Infrastructure Proposal",
-      timestamp: "2024-01-20 14:30",
-      status: "completed",
-    },
-    {
-      id: "2",
-      worker_id: "2",
-      worker_name: "Bob Smith",
-      action: "Uploaded RFP Document",
-      rfp_title: "Software Development Services",
-      timestamp: "2024-01-20 13:15",
-      status: "in_progress",
-    },
-    {
-      id: "3",
-      worker_id: "1",
-      worker_name: "Alice Johnson",
-      action: "Downloaded Final Proposal",
-      rfp_title: "Data Analytics Platform",
-      timestamp: "2024-01-20 11:45",
-      status: "completed",
-    },
-  ])
+export default function AdminDashboard({ user, onLogout, token }: AdminDashboardProps) {
+  const [workers, setWorkers] = useState<Worker[]>([])
+  const [rfps, setRfps] = useState<RFP[]>([])
+  const [pendingRfps, setPendingRfps] = useState<RFP[]>([])
 
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showAssignRfpDialog, setShowAssignRfpDialog] = useState(false)
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -143,6 +97,132 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
     password: "",
   })
 
+  const [activeContent, setActiveContent] = useState<"dashboard" | "workers" | "rfps">("dashboard")
+
+  // Function to fetch company ID
+  const fetchCompanyId = useCallback(async (userId: string) => {
+    try {
+      const companyIdResponse = await fetch(`http://localhost:8000/api/company_id/${userId}`)
+      if (!companyIdResponse.ok) {
+        throw new Error(`Failed to fetch company ID: HTTP status ${companyIdResponse.status}`)
+      }
+      const companyIdData = await companyIdResponse.json()
+      return companyIdData.company_id
+    } catch (err: any) {
+      console.error("Error fetching company ID:", err)
+      setError(`Failed to fetch company ID: ${err.message}`)
+      return null
+    }
+  }, [])
+
+  // Function to fetch workers
+  const fetchWorkers = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const company_id_from_backend = await fetchCompanyId(user.id)
+      if (!company_id_from_backend)
+        return
+      const response = await fetch(`http://localhost:8000/api/all-employee/${company_id_from_backend}`, {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      })
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
+      }
+
+      const rawData = await response.json()
+      const fetchedEmployees = rawData.employees
+
+      if (!Array.isArray(fetchedEmployees)) {
+          throw new Error("Backend response 'employees' is not an array.")
+      }
+
+      setWorkers(
+        fetchedEmployees.map((worker: any) => ({
+          id: worker.id.toString(),
+          name: worker.name,
+          email: worker.email,
+          created_at: worker.created_at ? new Date(worker.created_at).toLocaleDateString() : "N/A",
+          status: "active",
+          last_login: "N/A",
+          rfps_processed: Array.isArray(worker.rfps_assigned) ? worker.rfps_assigned.length : 0,
+          current_projects: Array.isArray(worker.rfps_assigned) ? worker.rfps_assigned.length : 0,
+          role: "employee",
+          rfps_assigned: worker.rfps_assigned, // Store assigned RFP IDs
+        })),
+      )
+    } catch (err: any) {
+      console.error("Error fetching workers:", err)
+      setError(`Failed to fetch workers: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }, [token, user.id, fetchCompanyId])
+
+  // Function to fetch RFPs
+  const fetchRfps = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const company_id_from_backend = await fetchCompanyId(user.id)
+      if (!company_id_from_backend) return
+
+      const response = await fetch(`http://localhost:8000/api/get_rfps/${company_id_from_backend}`, {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      })
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
+      }
+
+      const rawData = await response.json()
+      const fetchedRfps = rawData.rfps
+
+      if (!Array.isArray(fetchedRfps)) {
+        throw new Error("Backend response 'rfps' is not an array.")
+      }
+
+      setRfps(
+        fetchedRfps.map((rfp: any) => ({
+          id: rfp.id,
+          filename: rfp.filename,
+          content_type: rfp.content_type,
+          status: rfp.status, // Ensure status is correctly fetched
+          uploaded_by: rfp.uploaded_by,
+          uploaded_by_name: rfp.uploaded_by_name,
+          uploaded_by_email: rfp.uploaded_by_email,
+          created_at: rfp.created_at ? new Date(rfp.created_at).toLocaleDateString() : "N/A",
+          assigned_to_worker_id: rfp.assigned_to_worker_id || undefined, // Populate if available from backend
+          assigned_to_worker_name: rfp.assigned_to_worker_name || undefined, // Populate if available from backend
+        })),
+      )
+
+      // Filter pending RFPs based on status and if they are assigned
+      setPendingRfps(fetchedRfps.filter((rfp: any) => rfp.status === "pending" && !rfp.assigned_to_worker_id));
+
+    } catch (err: any) {
+      console.error("Error fetching RFPs:", err)
+      setError(`Failed to fetch RFPs: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }, [token, user.id, fetchCompanyId])
+
+  useEffect(() => {
+    fetchWorkers()
+  }, [fetchWorkers])
+
+  useEffect(() => {
+    fetchRfps()
+  }, [fetchRfps])
+
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -150,406 +230,585 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
     setSuccess(null)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const company_id_for_new_worker = await fetchCompanyId(user.id)
+      if (!company_id_for_new_worker) return
 
-      const worker: Worker = {
-        id: Date.now().toString(),
-        name: newWorker.name,
+      const payload = {
+        username: newWorker.name,
         email: newWorker.email,
-        created_at: new Date().toISOString().split("T")[0],
-        status: "active",
-        rfps_processed: 0,
-        current_projects: 0,
+        password: newWorker.password,
+        company_id: company_id_for_new_worker,
+        role: "employee",
       }
 
-      setWorkers([...workers, worker])
+      const response = await fetch("http://localhost:8000/api/admin/create-employee", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        let errorMsg = `HTTP error! status: ${response.status}`
+        try {
+          const errorData = await response.json()
+          errorMsg = errorData.detail || JSON.stringify(errorData) || errorMsg
+        } catch (e) {
+          try {
+            const text = await response.text()
+            errorMsg = text || errorMsg
+          } catch {}
+        }
+        throw new Error(errorMsg)
+      }
+
       setSuccess("Worker created successfully!")
       setNewWorker({ name: "", email: "", password: "" })
       setShowCreateDialog(false)
-    } catch (err) {
-      setError("Failed to create worker. Please try again.")
+      fetchWorkers()
+    } catch (err: any) {
+      setError(`Failed to create worker: ${err.message}`)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleToggleStatus = (workerId: string) => {
-    setWorkers(
-      workers.map((worker) =>
-        worker.id === workerId ? { ...worker, status: worker.status === "active" ? "inactive" : "active" } : worker,
-      ),
-    )
+  const handleDeleteWorker = async (workerId: string) => {
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/admin/remove-employee/${workerId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+      }
+
+      setSuccess("Worker removed successfully!")
+      fetchWorkers() // Re-fetch workers to update their assigned RFPs count
+      fetchRfps()    // Re-fetch RFPs to update their status based on backend changes
+    } catch (err: any) {
+      setError(`Failed to remove worker: ${err} `)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleDeleteWorker = (workerId: string) => {
-    setWorkers(workers.filter((worker) => worker.id !== workerId))
+  const handleOpenAssignRfpDialog = (employeeId: string) => {
+    setSelectedEmployeeId(employeeId)
+    setShowAssignRfpDialog(true)
   }
 
-  const totalRFPs = workers.reduce((sum, worker) => sum + worker.rfps_processed, 0)
+  const handleAssignRFP = async (rfpId: number) => {
+    if (!selectedEmployeeId) {
+      setError("No employee selected for RFP assignment.")
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/admin/assign-rfp-to-employee/${selectedEmployeeId}/${rfpId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+      }
+
+      setSuccess(`RFP ${rfpId} assigned successfully to worker ${selectedEmployeeId}!`)
+      setShowAssignRfpDialog(false)
+      fetchWorkers() // Re-fetch workers to update their assigned RFPs count
+      fetchRfps() // Re-fetch RFPs to update their status and refresh pending RFPs list
+    } catch (err: any) {
+      setError(`Failed to assign RFP: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUnassignRFP = async (rfpId: number) => {
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    // Find the employee who is assigned this RFP
+    const assignedWorker = workers.find(worker =>
+      Array.isArray(worker.rfps_assigned) && worker.rfps_assigned.includes(rfpId)
+    );
+    const employeeId = assignedWorker ? assignedWorker.id : null;
+
+    try {
+      if (!employeeId) {
+        throw new Error("Could not determine the employee assigned to this RFP.");
+      }
+      const response = await fetch(`http://localhost:8000/api/admin/unassign-rfp/${employeeId}/${rfpId}`, {
+        method: "POST", // Or DELETE, depending on your backend
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      setSuccess(`RFP ${rfpId} unassigned successfully!`);
+      fetchWorkers(); // Re-fetch workers to update their assigned RFPs count
+      fetchRfps(); // Re-fetch RFPs to update their status and refresh pending RFPs list
+    } catch (err: any) {
+      setError(`Failed to unassign RFP: ${err.message}`);
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDownloadRFP = async (rfpId: number, filename: string) => {
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      // Assuming your backend has an endpoint to download the RFP content
+      // e.g., GET /api/download-rfp/{rfpId}
+      const response = await fetch(`http://localhost:8000/api/download_rfp/${rfpId}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+      }
+
+      // Get the blob data from the response
+      const blob = await response.blob();
+      // Create a URL for the blob
+      const url = window.URL.createObjectURL(blob);
+      // Create a temporary link element
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // Use the original filename for download
+      document.body.appendChild(a);
+      a.click();
+      a.remove(); // Clean up the temporary link
+      window.URL.revokeObjectURL(url); // Release the object URL
+
+      setSuccess(`RFP ${filename} downloaded successfully!`);
+    } catch (err: any) {
+      setError(`Failed to download RFP: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const totalRFPs = rfps.length
   const activeWorkers = workers.filter((worker) => worker.status === "active").length
   const currentProjects = workers.reduce((sum, worker) => sum + worker.current_projects, 0)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-lg">
-              <Shield className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-800 via-indigo-800 to-purple-800 bg-clip-text text-transparent">
-                Admin Dashboard
-              </h1>
-              <p className="text-gray-600 mt-1">Manage workers and monitor RFP processing activities</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <Shield className="w-4 h-4 text-blue-600" />
-                {user.name}
-              </div>
-              <div className="text-xs text-gray-500">{user.company}</div>
-              <Badge className="mt-1 bg-blue-100 text-blue-700 hover:bg-blue-200">Admin</Badge>
-            </div>
-            <Button variant="outline" onClick={onLogout} className="rounded-xl border-gray-300 hover:bg-gray-50">
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </Button>
-          </div>
+    <div className="flex min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100">
+      {/* Sidebar */}
+      <aside className="w-64 bg-gradient-to-b from-blue-700 to-indigo-800 text-white shadow-xl flex flex-col p-4">
+        <div className="flex items-center gap-3 mb-8 px-2 py-3 rounded-lg bg-blue-800/50">
+          <Shield className="w-7 h-7 text-blue-200" />
+          <h2 className="text-2xl font-bold">Admin Panel</h2>
         </div>
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          {[
-            {
-              title: "Total Workers",
-              value: workers.length,
-              icon: Users,
-              color: "from-blue-500 to-blue-600",
-              bgColor: "from-blue-50 to-blue-100",
-            },
-            {
-              title: "Active Workers",
-              value: activeWorkers,
-              icon: CheckCircle,
-              color: "from-green-500 to-green-600",
-              bgColor: "from-green-50 to-green-100",
-            },
-            {
-              title: "RFPs Processed",
-              value: totalRFPs,
-              icon: FileText,
-              color: "from-purple-500 to-purple-600",
-              bgColor: "from-purple-50 to-purple-100",
-            },
-            {
-              title: "Active Projects",
-              value: currentProjects,
-              icon: Activity,
-              color: "from-orange-500 to-orange-600",
-              bgColor: "from-orange-50 to-orange-100",
-            },
-          ].map((stat) => {
-            const Icon = stat.icon
-            return (
-              <Card
-                key={stat.title}
-                className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
-              >
-                <div className={`h-2 bg-gradient-to-r ${stat.color}`} />
-                <CardHeader className={`pb-3 bg-gradient-to-br ${stat.bgColor}`}>
-                  <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                    <Icon className="w-5 h-5" />
-                    {stat.title}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <div
-                    className={`text-3xl font-bold bg-gradient-to-r ${stat.color} bg-clip-text text-transparent mb-1`}
+        <nav className="flex-1 space-y-2">
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "dashboard" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("dashboard")}
+          >
+            <LayoutDashboard className="w-5 h-5 mr-3" />
+            Dashboard
+          </Button>
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "workers" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("workers")}
+          >
+            <Users className="w-5 h-5 mr-3" />
+            Employees
+          </Button>
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "rfps" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("rfps")}
+          >
+            <FileText className="w-5 h-5 mr-3" />
+            View All RFPs
+          </Button>
+        </nav>
+
+        <div className="mt-auto border-t border-blue-600 pt-4">
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <DialogTrigger asChild>
+              <Button className="w-full bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg mb-3">
+                <UserPlus className="w-4 h-4 mr-2" />
+                Add New Employee
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md rounded-2xl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-blue-600" />
+                  Add New Employee
+                </DialogTitle>
+                <DialogDescription>Create a new employee account with RFP processing capabilities.</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleCreateWorker} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input
+                    id="name"
+                    value={newWorker.name}
+                    onChange={(e) => setNewWorker({ ...newWorker, name: e.target.value })}
+                    placeholder="Enter full name"
+                    required
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={newWorker.email}
+                    onChange={(e) => setNewWorker({ ...newWorker, email: e.target.value })}
+                    placeholder="Enter email address"
+                    required
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Initial Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={newWorker.password}
+                    onChange={(e) => setNewWorker({ ...newWorker, password: e.target.value })}
+                    placeholder="Enter initial password"
+                    required
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl"
                   >
-                    {stat.value}
-                  </div>
-                  <p className="text-sm text-gray-600">Company wide</p>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-
-        {/* Alerts */}
-        {error && (
-          <Alert variant="destructive" className="mb-6 rounded-xl border-red-200 bg-red-50">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="text-red-800">{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {success && (
-          <Alert className="mb-6 rounded-xl border-green-200 bg-green-50">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">{success}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Main Content */}
-        <Card className="shadow-xl border-0 overflow-hidden">
-          <div className="h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
-          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 pb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-3 text-2xl text-blue-800">
-                  <Users className="w-6 h-6" />
-                  Worker Management
-                </CardTitle>
-                <p className="text-blue-700 mt-2">Manage your team and monitor their RFP processing activities</p>
-              </div>
-              <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-                <DialogTrigger asChild>
-                  <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl shadow-lg">
-                    <UserPlus className="w-5 h-5 mr-2" />
-                    Add Worker
+                    {loading ? "Creating..." : "Add Worker"}
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md rounded-2xl">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <UserPlus className="w-5 h-5 text-blue-600" />
-                      Add New Worker
-                    </DialogTitle>
-                    <DialogDescription>Create a new worker account with RFP processing capabilities.</DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleCreateWorker} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Full Name</Label>
-                      <Input
-                        id="name"
-                        value={newWorker.name}
-                        onChange={(e) => setNewWorker({ ...newWorker, name: e.target.value })}
-                        placeholder="Enter full name"
-                        required
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email Address</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={newWorker.email}
-                        onChange={(e) => setNewWorker({ ...newWorker, email: e.target.value })}
-                        placeholder="Enter email address"
-                        required
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="password">Initial Password</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        value={newWorker.password}
-                        onChange={(e) => setNewWorker({ ...newWorker, password: e.target.value })}
-                        placeholder="Enter initial password"
-                        required
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="flex gap-3 pt-4">
-                      <Button
-                        type="submit"
-                        disabled={loading}
-                        className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl"
-                      >
-                        {loading ? "Creating..." : "Add Worker"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setShowCreateDialog(false)}
-                        className="rounded-xl"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardHeader>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowCreateDialog(false)}
+                    className="flex-1 rounded-xl"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
 
-          <CardContent className="p-6">
-            <Tabs defaultValue="workers" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6 bg-gray-100 p-1 rounded-2xl">
-                <TabsTrigger
-                  value="workers"
-                  className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm"
-                >
-                  <Users className="w-4 h-4 mr-2" />
-                  Workers ({workers.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="activity"
-                  className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm"
-                >
-                  <Activity className="w-4 h-4 mr-2" />
-                  Recent Activity
-                </TabsTrigger>
-              </TabsList>
+          <Button
+            onClick={onLogout}
+            className="w-full bg-red-500 hover:bg-red-600 rounded-xl shadow-lg mt-3"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Logout
+          </Button>
+        </div>
+      </aside>
 
-              <TabsContent value="workers" className="space-y-4">
-                <div className="rounded-2xl border border-gray-200 overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold">Worker</TableHead>
-                        <TableHead className="font-semibold">RFPs Processed</TableHead>
-                        <TableHead className="font-semibold">Current Projects</TableHead>
-                        <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="font-semibold">Last Login</TableHead>
-                        <TableHead className="font-semibold">Actions</TableHead>
+      {/* Main Content */}
+      <main className="flex-1 p-8 overflow-y-auto">
+        <header className="flex justify-between items-center mb-8">
+          <h1 className="text-4xl font-extrabold text-gray-800">Welcome, {user.name}</h1>
+          <div className="flex items-center space-x-4">
+            <Badge variant="secondary" className="text-lg px-4 py-2 rounded-full">
+              <Mail className="w-4 h-4 mr-2" />
+              {user.email}
+            </Badge>
+            <Badge variant="secondary" className="text-lg px-4 py-2 rounded-full bg-blue-500 text-white">
+              <Shield className="w-4 h-4 mr-2" />
+              {user.role.toUpperCase()}
+            </Badge>
+          </div>
+        </header>
+
+        {loading && (
+          <Alert className="mb-4 bg-blue-100 border-blue-200 text-blue-700 rounded-xl">
+            <Activity className="h-4 w-4" />
+            <AlertDescription>Loading data...</AlertDescription>
+          </Alert>
+        )}
+        {error && (
+          <Alert variant="destructive" className="mb-4 rounded-xl">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {success && (
+          <Alert className="mb-4 bg-green-100 border-green-200 text-green-700 rounded-xl">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription>{success}</AlertDescription>
+          </Alert>
+        )}
+
+        {activeContent === "dashboard" && (
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <Card className="rounded-2xl shadow-lg border border-blue-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                <CardTitle className="text-lg font-medium text-gray-700">Total RFPs</CardTitle>
+                <FileText className="h-5 w-5 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-4xl font-bold text-gray-900">{totalRFPs}</div>
+                <p className="text-xs text-gray-500">All uploaded documents</p>
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl shadow-lg border border-green-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                <CardTitle className="text-lg font-medium text-gray-700">Active Employees</CardTitle>
+                <Users className="h-5 w-5 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-4xl font-bold text-gray-900">{activeWorkers}</div>
+                <p className="text-xs text-gray-500">Currently active employees</p>
+              </CardContent>
+            </Card>
+            <Card className="rounded-2xl shadow-lg border border-purple-200">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                <CardTitle className="text-lg font-medium text-gray-700">Current Projects</CardTitle>
+                <Activity className="h-5 w-5 text-purple-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-4xl font-bold text-gray-900">{currentProjects}</div>
+                <p className="text-xs text-gray-500">RFPs currently being processed</p>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {activeContent === "workers" && (
+          <section className="mb-8">
+            <Card className="rounded-2xl shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold text-gray-800">Employee Management</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table className="min-w-full">
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Joined</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>RFPs Processed</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {workers.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-4 text-gray-500">
+                          No workers found.
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {workers.map((worker) => (
+                    ) : (
+                      workers.map((worker) => (
                         <TableRow key={worker.id} className="hover:bg-gray-50">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 bg-blue-100 rounded-lg">
-                                <Users className="w-4 h-4 text-blue-600" />
-                              </div>
-                              <div>
-                                <div className="font-medium text-gray-900">{worker.name}</div>
-                                <div className="text-sm text-gray-500 flex items-center gap-1">
-                                  <Mail className="w-3 h-3" />
-                                  {worker.email}
-                                </div>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-gray-400" />
-                              <span className="font-medium">{worker.rfps_processed}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="rounded-xl">
-                              {worker.current_projects} active
-                            </Badge>
-                          </TableCell>
+                          <TableCell className="font-medium text-gray-900">{worker.name}</TableCell>
+                          <TableCell className="text-gray-700">{worker.email}</TableCell>
+                          <TableCell className="text-gray-500">{worker.created_at}</TableCell>
                           <TableCell>
                             <Badge
-                              variant={worker.status === "active" ? "default" : "secondary"}
+                              variant={worker.status === "active" ? "default" : "outline"}
                               className={`rounded-xl ${
-                                worker.status === "active"
-                                  ? "bg-green-100 text-green-700 hover:bg-green-200"
-                                  : "bg-gray-100 text-gray-700"
+                                worker.status === "active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                               }`}
                             >
                               {worker.status}
                             </Badge>
                           </TableCell>
-                          <TableCell>
-                            {worker.last_login ? (
-                              <div className="flex items-center gap-1 text-sm text-gray-600">
-                                <Calendar className="w-3 h-3" />
-                                {worker.last_login}
-                              </div>
-                            ) : (
-                              <span className="text-sm text-gray-400">Never</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button variant="outline" size="sm" className="rounded-lg">
-                                <Eye className="w-4 h-4 mr-1" />
-                                View
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleToggleStatus(worker.id)}
-                                className="rounded-lg"
-                              >
-                                {worker.status === "active" ? "Deactivate" : "Activate"}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDeleteWorker(worker.id)}
-                                className="rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
+                          <TableCell className="text-gray-700">{worker.rfps_processed}</TableCell>
+                          <TableCell className="text-right flex space-x-2 justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg"
+                              onClick={() => handleOpenAssignRfpDialog(worker.id)}
+                            >
+                              <PlusCircle className="h-4 w-4 mr-1" /> Assign RFP
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 border-red-600 hover:bg-red-50 rounded-lg"
+                              onClick={() => handleDeleteWorker(worker.id)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" /> Remove
+                            </Button>
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </TabsContent>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
 
-              <TabsContent value="activity" className="space-y-4">
-                <div className="space-y-4">
-                  {activities.map((activity) => (
-                    <Card key={activity.id} className="border-0 shadow-md hover:shadow-lg transition-shadow">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div
-                              className={`p-2 rounded-lg ${
-                                activity.status === "completed"
-                                  ? "bg-green-100"
-                                  : activity.status === "in_progress"
-                                    ? "bg-blue-100"
-                                    : "bg-red-100"
-                              }`}
-                            >
-                              {activity.action.includes("Generated") ? (
-                                <Brain className="w-4 h-4 text-green-600" />
-                              ) : activity.action.includes("Downloaded") ? (
-                                <Download className="w-4 h-4 text-blue-600" />
-                              ) : (
-                                <FileText className="w-4 h-4 text-purple-600" />
-                              )}
-                            </div>
-                            <div>
-                              <div className="font-medium text-gray-900">{activity.worker_name}</div>
-                              <div className="text-sm text-gray-600">{activity.action}</div>
-                              <div className="text-sm font-medium text-blue-600">{activity.rfp_title}</div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <Badge
-                              variant={activity.status === "completed" ? "default" : "outline"}
-                              className={`rounded-xl mb-2 ${
-                                activity.status === "completed"
-                                  ? "bg-green-100 text-green-700"
-                                  : activity.status === "in_progress"
-                                    ? "bg-blue-100 text-blue-700"
-                                    : "bg-red-100 text-red-700"
-                              }`}
-                            >
-                              {activity.status.replace("_", " ")}
-                            </Badge>
-                            <div className="text-xs text-gray-500">{activity.timestamp}</div>
-                          </div>
+            <Dialog open={showAssignRfpDialog} onOpenChange={setShowAssignRfpDialog}>
+              <DialogContent className="sm:max-w-md rounded-2xl">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-blue-600" /> Assign RFP to Worker
+                  </DialogTitle>
+                  <DialogDescription>Select an RFP to assign to the chosen worker.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {pendingRfps.length === 0 ? (
+                    <p className="text-gray-500 text-center py-4">No pending RFPs available for assignment.</p>
+                  ) : (
+                    pendingRfps.map((rfp) => (
+                      <Card key={rfp.id} className="flex items-center justify-between p-4 rounded-xl shadow-sm border border-gray-200">
+                        <div>
+                          <p className="font-medium text-gray-900">{rfp.filename}</p>
+                          <p className="text-sm text-gray-500">Uploaded by: {rfp.uploaded_by_name}</p>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        <Button
+                          size="sm"
+                          onClick={() => handleAssignRFP(rfp.id)}
+                          disabled={loading}
+                          className="bg-blue-600 hover:bg-blue-700 rounded-lg"
+                        >
+                          {loading ? "Assigning..." : "Assign"}
+                        </Button>
+                      </Card>
+                    ))
+                  )}
                 </div>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAssignRfpDialog(false)}
+                    className="rounded-xl"
+                  >
+                    Close
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </section>
+        )}
+
+        {activeContent === "rfps" && (
+          <section className="mb-8">
+            <Card className="rounded-2xl shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold text-gray-800">All RFPs</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table className="min-w-full">
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead>Filename</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Uploaded By</TableHead>
+                      <TableHead>Upload Date</TableHead>
+                      <TableHead>Assigned To</TableHead> {/* New column for assigned worker */}
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rfps.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-4 text-gray-500"> {/* Updated colspan */}
+                          No RFPs found.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      rfps.map((rfp) => (
+                        <TableRow key={rfp.id} className="hover:bg-gray-50">
+                          <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
+                          <TableCell className="text-gray-700">{rfp.content_type}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={rfp.status === "completed" ? "default" : "outline"}
+                              className={`rounded-xl ${
+                                rfp.status === "pending"
+                                  ? "bg-yellow-100 text-yellow-700"
+                                  : rfp.status === "in_progress"
+                                    ? "bg-blue-100 text-blue-700"
+                                    : rfp.status === "assigned" // New status styling
+                                      ? "bg-purple-100 text-purple-700"
+                                      : "bg-green-100 text-green-700"
+                              }`}
+                            >
+                              {rfp.status.replace(/_/g, " ")}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-gray-700">{rfp.uploaded_by_name}</TableCell>
+                          <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
+                          <TableCell className="text-gray-700">
+                              {rfp.assigned_to_worker_name || "N/A"} {/* Display assigned worker */}
+                          </TableCell>
+                          <TableCell className="text-right flex space-x-2 justify-end">
+                            {rfp.status === "assigned" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-orange-600 border-orange-600 hover:bg-orange-50 rounded-lg"
+                                  onClick={() => handleUnassignRFP(rfp.id)}
+                                >
+                                  <RefreshCw className="h-4 w-4 mr-1" /> Unassign
+                                </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg"
+                              onClick={() => handleDownloadRFP(rfp.id, rfp.filename)} // Call the new download function
+                            >
+                              <Download className="h-4 w-4 mr-1" /> Download
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+      </main>
     </div>
   )
 }

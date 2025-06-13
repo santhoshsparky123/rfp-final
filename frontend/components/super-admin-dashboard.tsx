@@ -1,37 +1,13 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Crown,
-  UserPlus,
-  Users,
-  Shield,
-  LogOut,
-  Trash2,
-  CheckCircle,
-  AlertCircle,
-  Building,
-  Mail,
-  Calendar,
-} from "lucide-react"
+import { Crown, Users, LogOut, CheckCircle, AlertCircle, Building, Mail, Calendar, Activity } from "lucide-react"
 
 interface SuperAdminDashboardProps {
   user: {
@@ -44,98 +20,61 @@ interface SuperAdminDashboardProps {
   onLogout: () => void
 }
 
-interface Admin {
-  id: string
+interface Company {
+  id: number
   name: string
-  email: string
-  company: string
-  created_at: string
-  status: "active" | "inactive"
-  workers_count: number
-  last_login?: string
+  subdomain: string
+  subscription_status: string
+  subscription_start?: string
+  subscription_end?: string
+  created_at?: string
+  admin?: {
+    id: number
+    username: string
+    email: string
+  }
 }
 
 export default function SuperAdminDashboard({ user, onLogout }: SuperAdminDashboardProps) {
-  const [admins, setAdmins] = useState<Admin[]>([
-    {
-      id: "1",
-      name: "John Admin",
-      email: "john@techcorp.com",
-      company: "TechCorp Solutions",
-      created_at: "2024-01-15",
-      status: "active",
-      workers_count: 5,
-      last_login: "2024-01-20",
-    },
-    {
-      id: "2",
-      name: "Sarah Manager",
-      email: "sarah@innovate.com",
-      company: "Innovate Inc",
-      created_at: "2024-01-10",
-      status: "active",
-      workers_count: 3,
-      last_login: "2024-01-19",
-    },
-  ])
-
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
 
-  const [newAdmin, setNewAdmin] = useState({
-    name: "",
-    email: "",
-    company: "",
-    password: "",
-  })
+  useEffect(() => {
+    fetchCompanies()
+  }, [])
 
-  const handleCreateAdmin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
-
+  const fetchCompanies = async () => {
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      const admin: Admin = {
-        id: Date.now().toString(),
-        name: newAdmin.name,
-        email: newAdmin.email,
-        company: newAdmin.company,
-        created_at: new Date().toISOString().split("T")[0],
-        status: "active",
-        workers_count: 0,
+      const token = localStorage.getItem("token")
+      if (!token) {
+        throw new Error("Authentication token not found")
       }
 
-      setAdmins([...admins, admin])
-      setSuccess("Admin created successfully!")
-      setNewAdmin({ name: "", email: "", company: "", password: "" })
-      setShowCreateDialog(false)
+      const response = await fetch("http://localhost:8000/api/all-companies", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Failed to fetch companies")
+      }
+
+      const data = await response.json()
+      setCompanies(data.companies || [])
     } catch (err) {
-      setError("Failed to create admin. Please try again.")
+      console.error("Error fetching companies:", err)
+      setError(err instanceof Error ? err.message : "Failed to fetch companies")
     } finally {
       setLoading(false)
     }
   }
 
-  const handleToggleStatus = (adminId: string) => {
-    setAdmins(
-      admins.map((admin) =>
-        admin.id === adminId ? { ...admin, status: admin.status === "active" ? "inactive" : "active" } : admin,
-      ),
-    )
-  }
-
-  const handleDeleteAdmin = (adminId: string) => {
-    setAdmins(admins.filter((admin) => admin.id !== adminId))
-  }
-
-  const totalWorkers = admins.reduce((sum, admin) => sum + admin.workers_count, 0)
-  const activeAdmins = admins.filter((admin) => admin.status === "active").length
+  const totalUsers = companies.reduce((sum, company) => sum + (company.admin ? 1 : 0), 0)
+  const activeCompanies = companies.filter((company) => company.subscription_status === "active").length
+  const expiredCompanies = companies.filter((company) => company.subscription_status === "expired").length
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 p-4">
@@ -150,7 +89,7 @@ export default function SuperAdminDashboard({ user, onLogout }: SuperAdminDashbo
               <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-800 via-blue-800 to-indigo-800 bg-clip-text text-transparent">
                 Super Admin Dashboard
               </h1>
-              <p className="text-gray-600 mt-1">Manage administrators and oversee the entire system</p>
+              <p className="text-gray-600 mt-1">Manage companies and oversee the entire system</p>
             </div>
           </div>
 
@@ -174,32 +113,32 @@ export default function SuperAdminDashboard({ user, onLogout }: SuperAdminDashbo
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           {[
             {
-              title: "Total Admins",
-              value: admins.length,
-              icon: Shield,
+              title: "Total Companies",
+              value: companies.length,
+              icon: Building,
               color: "from-blue-500 to-blue-600",
               bgColor: "from-blue-50 to-blue-100",
             },
             {
-              title: "Active Admins",
-              value: activeAdmins,
+              title: "Active Companies",
+              value: activeCompanies,
               icon: CheckCircle,
               color: "from-green-500 to-green-600",
               bgColor: "from-green-50 to-green-100",
             },
             {
-              title: "Total Workers",
-              value: totalWorkers,
+              title: "Expired Companies",
+              value: expiredCompanies,
+              icon: AlertCircle,
+              color: "from-red-500 to-red-600",
+              bgColor: "from-red-50 to-red-100",
+            },
+            {
+              title: "Total Users",
+              value: totalUsers,
               icon: Users,
               color: "from-purple-500 to-purple-600",
               bgColor: "from-purple-50 to-purple-100",
-            },
-            {
-              title: "Companies",
-              value: new Set(admins.map((a) => a.company)).size,
-              icon: Building,
-              color: "from-orange-500 to-orange-600",
-              bgColor: "from-orange-50 to-orange-100",
             },
           ].map((stat) => {
             const Icon = stat.icon
@@ -236,13 +175,6 @@ export default function SuperAdminDashboard({ user, onLogout }: SuperAdminDashbo
           </Alert>
         )}
 
-        {success && (
-          <Alert className="mb-6 rounded-xl border-green-200 bg-green-50">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">{success}</AlertDescription>
-          </Alert>
-        )}
-
         {/* Main Content */}
         <Card className="shadow-xl border-0 overflow-hidden">
           <div className="h-1 bg-gradient-to-r from-purple-500 via-blue-500 to-indigo-500" />
@@ -250,231 +182,171 @@ export default function SuperAdminDashboard({ user, onLogout }: SuperAdminDashbo
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-3 text-2xl text-purple-800">
-                  <Shield className="w-6 h-6" />
-                  Administrator Management
+                  <Building className="w-6 h-6" />
+                  Company Management
                 </CardTitle>
-                <p className="text-purple-700 mt-2">Create and manage system administrators</p>
+                <p className="text-purple-700 mt-2">Monitor and manage all companies in the system</p>
               </div>
-              <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-                <DialogTrigger asChild>
-                  <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl shadow-lg">
-                    <UserPlus className="w-5 h-5 mr-2" />
-                    Create Admin
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md rounded-2xl">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <UserPlus className="w-5 h-5 text-purple-600" />
-                      Create New Administrator
-                    </DialogTitle>
-                    <DialogDescription>
-                      Create a new administrator account with company management privileges.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleCreateAdmin} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Full Name</Label>
-                      <Input
-                        id="name"
-                        value={newAdmin.name}
-                        onChange={(e) => setNewAdmin({ ...newAdmin, name: e.target.value })}
-                        placeholder="Enter full name"
-                        required
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email Address</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={newAdmin.email}
-                        onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
-                        placeholder="Enter email address"
-                        required
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="company">Company Name</Label>
-                      <Input
-                        id="company"
-                        value={newAdmin.company}
-                        onChange={(e) => setNewAdmin({ ...newAdmin, company: e.target.value })}
-                        placeholder="Enter company name"
-                        required
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="password">Initial Password</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        value={newAdmin.password}
-                        onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
-                        placeholder="Enter initial password"
-                        required
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="flex gap-3 pt-4">
-                      <Button
-                        type="submit"
-                        disabled={loading}
-                        className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl"
-                      >
-                        {loading ? "Creating..." : "Create Admin"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setShowCreateDialog(false)}
-                        className="rounded-xl"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
             </div>
           </CardHeader>
 
           <CardContent className="p-6">
-            <Tabs defaultValue="admins" className="w-full">
+            <Tabs defaultValue="companies" className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6 bg-gray-100 p-1 rounded-2xl">
                 <TabsTrigger
-                  value="admins"
+                  value="companies"
                   className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm"
                 >
-                  <Shield className="w-4 h-4 mr-2" />
-                  Administrators ({admins.length})
+                  <Building className="w-4 h-4 mr-2" />
+                  Companies ({companies.length})
                 </TabsTrigger>
                 <TabsTrigger
                   value="analytics"
                   className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm"
                 >
-                  <Users className="w-4 h-4 mr-2" />
+                  <Activity className="w-4 h-4 mr-2" />
                   System Analytics
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="admins" className="space-y-4">
-                <div className="rounded-2xl border border-gray-200 overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold">Administrator</TableHead>
-                        <TableHead className="font-semibold">Company</TableHead>
-                        <TableHead className="font-semibold">Workers</TableHead>
-                        <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="font-semibold">Last Login</TableHead>
-                        <TableHead className="font-semibold">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {admins.map((admin) => (
-                        <TableRow key={admin.id} className="hover:bg-gray-50">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 bg-purple-100 rounded-lg">
-                                <Shield className="w-4 h-4 text-purple-600" />
-                              </div>
-                              <div>
-                                <div className="font-medium text-gray-900">{admin.name}</div>
-                                <div className="text-sm text-gray-500 flex items-center gap-1">
-                                  <Mail className="w-3 h-3" />
-                                  {admin.email}
+              <TabsContent value="companies" className="space-y-4">
+                {loading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading companies...</p>
+                  </div>
+                ) : companies.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No Companies Found</h3>
+                    <p className="text-gray-600">No companies have been created yet</p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-gray-200 overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold">Company</TableHead>
+                          <TableHead className="font-semibold">Subdomain</TableHead>
+                          <TableHead className="font-semibold">Admin</TableHead>
+                          <TableHead className="font-semibold">Status</TableHead>
+                          <TableHead className="font-semibold">Subscription</TableHead>
+                          <TableHead className="font-semibold">Created</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {companies.map((company) => (
+                          <TableRow key={company.id} className="hover:bg-gray-50">
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 bg-purple-100 rounded-lg">
+                                  <Building className="w-4 h-4 text-purple-600" />
+                                </div>
+                                <div>
+                                  <div className="font-medium text-gray-900">{company.name}</div>
+                                  <div className="text-sm text-gray-500">ID: {company.id}</div>
                                 </div>
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Building className="w-4 h-4 text-gray-400" />
-                              <span className="font-medium">{admin.company}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="rounded-xl">
-                              {admin.workers_count} workers
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={admin.status === "active" ? "default" : "secondary"}
-                              className={`rounded-xl ${
-                                admin.status === "active"
-                                  ? "bg-green-100 text-green-700 hover:bg-green-200"
-                                  : "bg-gray-100 text-gray-700"
-                              }`}
-                            >
-                              {admin.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {admin.last_login ? (
-                              <div className="flex items-center gap-1 text-sm text-gray-600">
-                                <Calendar className="w-3 h-3" />
-                                {admin.last_login}
-                              </div>
-                            ) : (
-                              <span className="text-sm text-gray-400">Never</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleToggleStatus(admin.id)}
-                                className="rounded-lg"
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium text-blue-600">{company.subdomain}.rfp.com</div>
+                            </TableCell>
+                            <TableCell>
+                              {company.admin ? (
+                                <div>
+                                  <div className="font-medium text-gray-900">{company.admin.username}</div>
+                                  <div className="text-sm text-gray-500 flex items-center gap-1">
+                                    <Mail className="w-3 h-3" />
+                                    {company.admin.email}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400">No admin assigned</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                className={`rounded-xl ${
+                                  company.subscription_status === "active"
+                                    ? "bg-green-100 text-green-700 hover:bg-green-200"
+                                    : company.subscription_status === "expired"
+                                      ? "bg-red-100 text-red-700 hover:bg-red-200"
+                                      : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                                }`}
                               >
-                                {admin.status === "active" ? "Deactivate" : "Activate"}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleDeleteAdmin(admin.id)}
-                                className="rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                                {company.subscription_status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {company.subscription_end ? (
+                                <div className="text-sm">
+                                  <div className="text-gray-900">
+                                    Expires: {new Date(company.subscription_end).toLocaleDateString()}
+                                  </div>
+                                  {company.subscription_start && (
+                                    <div className="text-gray-500">
+                                      Started: {new Date(company.subscription_start).toLocaleDateString()}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400">No subscription</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {company.created_at ? (
+                                <div className="flex items-center gap-1 text-sm text-gray-600">
+                                  <Calendar className="w-3 h-3" />
+                                  {new Date(company.created_at).toLocaleDateString()}
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400">Unknown</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="analytics" className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Card className="border-0 shadow-lg">
                     <CardHeader>
-                      <CardTitle className="text-lg">Admin Activity</CardTitle>
+                      <CardTitle className="text-lg">Subscription Status Distribution</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {admins.slice(0, 3).map((admin) => (
-                          <div key={admin.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 bg-purple-100 rounded-lg">
-                                <Shield className="w-4 h-4 text-purple-600" />
-                              </div>
-                              <div>
-                                <div className="font-medium text-sm">{admin.name}</div>
-                                <div className="text-xs text-gray-500">{admin.company}</div>
-                              </div>
+                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-green-100 rounded-lg">
+                              <CheckCircle className="w-4 h-4 text-green-600" />
                             </div>
-                            <Badge variant="outline" className="text-xs">
-                              {admin.workers_count} workers
-                            </Badge>
+                            <div>
+                              <div className="font-medium text-sm">Active</div>
+                              <div className="text-xs text-gray-500">Companies with active subscriptions</div>
+                            </div>
                           </div>
-                        ))}
+                          <Badge variant="outline" className="text-xs">
+                            {activeCompanies}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-red-50 rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-red-100 rounded-lg">
+                              <AlertCircle className="w-4 h-4 text-red-600" />
+                            </div>
+                            <div>
+                              <div className="font-medium text-sm">Expired</div>
+                              <div className="text-xs text-gray-500">Companies with expired subscriptions</div>
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {expiredCompanies}
+                          </Badge>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -495,16 +367,16 @@ export default function SuperAdminDashboard({ user, onLogout }: SuperAdminDashbo
                         <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl">
                           <div className="flex items-center gap-2">
                             <Users className="w-5 h-5 text-blue-600" />
-                            <span className="font-medium">Active Users</span>
+                            <span className="font-medium">Total Users</span>
                           </div>
-                          <Badge variant="outline">{activeAdmins + totalWorkers}</Badge>
+                          <Badge variant="outline">{totalUsers}</Badge>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-purple-50 rounded-xl">
                           <div className="flex items-center gap-2">
                             <Building className="w-5 h-5 text-purple-600" />
-                            <span className="font-medium">Companies</span>
+                            <span className="font-medium">Total Companies</span>
                           </div>
-                          <Badge variant="outline">{new Set(admins.map((a) => a.company)).size}</Badge>
+                          <Badge variant="outline">{companies.length}</Badge>
                         </div>
                       </div>
                     </CardContent>
