@@ -12,6 +12,11 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 
+import fitz  # For PDFs
+import docx  # For Word
+import openpyxl  # For Excel
+from io import BytesIO
+
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")  
 # if not DATABASE_URL:
@@ -95,7 +100,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     #             detail="Company subscription expired or inactive"
     #         )
     
-    return user
+    return user.role
 
 def require_role(required_roles: List[UserRole]):
     def role_checker(current_user: User = Depends(get_current_user)):
@@ -120,3 +125,21 @@ def get_company_from_subdomain(subdomain: str, db: Session):
             detail="Company subscription expired"
         )
     return company
+
+
+def extract_text_from_pdf(file_bytes: bytes) -> str:
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    return "\n".join([page.get_text() for page in doc])
+
+def extract_text_from_docx(file_bytes: bytes) -> str:
+    doc = docx.Document(BytesIO(file_bytes))
+    return "\n".join([para.text for para in doc.paragraphs])
+
+def extract_text_from_excel(file_bytes: bytes) -> str:
+    wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True)
+    text_chunks = []
+    for sheet in wb.worksheets:
+        for row in sheet.iter_rows(values_only=True):
+            line = ' | '.join([str(cell) if cell is not None else '' for cell in row])
+            text_chunks.append(line)
+    return "\n".join(text_chunks)

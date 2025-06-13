@@ -1,7 +1,8 @@
-from models.schema import User, UserRole, UserCreate, UserResponse, RFP, Employee, EmployeeCreate, Company
+import os
+from models.schema import User, UserRole, UserCreate, UserResponse, RFP , Employee , EmployeeCreate, Company
 from methods.functions import get_db, require_role, get_password_hash
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException, Depends, UploadFile, File
 from fastapi import APIRouter
 from typing import List
 from fastapi.responses import StreamingResponse
@@ -15,25 +16,12 @@ router = APIRouter(prefix="/api",tags=["Admin"])
 @router.post("/admin/create-employee")
 async def create_employee(
     employee_data: EmployeeCreate,
-    # current_user: User = Depends(require_role([UserRole.ADMIN])),
+    current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: Session = Depends(get_db)
 ):
     hashed_password = get_password_hash(employee_data.password)
-    # # Add to User table
-    # employee = Employee(
-    #     username=employee_data.username,
-    #     email=employee_data.email,
-    #     hashed_password=hashed_password,
-    #     role=UserRole.EMPLOYEE,
-    #     company_id=current_user.company_id,  # Uncomment if you add company_id to User
-    #     # created_by=current_user.id           # Uncomment if you add created_by to User
-    # )
-    # db.add(employee)
-    # db.commit()
-    # db.refresh(employee)
-    # Add to Employee table
-    employee_entry = Employee(
-        name=employee_data.username,
+    employee = Employee(
+        username=employee_data.username,
         email=employee_data.email,
         hashed_password=hashed_password,
         role=UserRole.EMPLOYEE,
@@ -52,6 +40,8 @@ async def remove_employee(
     # current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: Session = Depends(get_db)
 ):
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id
     employee = db.query(Employee).filter(
         Employee.id == employee_id
     ).first()
@@ -86,11 +76,11 @@ async def get_company_id(
     user_id: int,
     db: Session = Depends(get_db)
 ):
-    company = db.query(Company).filter(Company.userid == user_id).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    return {"company_id": company.id}
-
+    company = db.query(Company).filter(Company.userid == userid).first()
+    return {
+        "company_id":company.id
+    }
+    
 @router.get("/get_rfps/{companyid}")
 async def getrfps(
     companyid: int,
