@@ -6,6 +6,8 @@ from fastapi import APIRouter
 from typing import List
 from fastapi.responses import StreamingResponse
 from datetime import datetime
+import json # Import json to handle JSON strings
+from fastapi import status
 
 router = APIRouter(prefix="/api",tags=["Admin"])
 
@@ -36,7 +38,7 @@ async def create_employee(
         hashed_password=hashed_password,
         role=UserRole.EMPLOYEE,
         company_id=employee_data.company_id,  # Assuming current_user has company_id
-    
+
         created_at=datetime.now()
     )
     db.add(employee_entry)
@@ -47,32 +49,37 @@ async def create_employee(
 @router.delete("/admin/remove-employee/{employee_id}")
 async def remove_employee(
     employee_id: int,
-    current_user: User = Depends(require_role([UserRole.ADMIN])),
+    # current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: Session = Depends(get_db)
 ):
-    employee = db.query(User).filter(
-        User.id == employee_id,
-        User.role == UserRole.EMPLOYEE
+    employee = db.query(Employee).filter(
+        Employee.id == employee_id
     ).first()
-    
+
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    
-    employee.is_active = False
+
+    db.delete(employee)
     db.commit()
-    
+
     return {"message": "Employee removed successfully"}
 
-@router.get("/admin/employees", response_model=List[UserResponse])
-async def get_employees(
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
-    db: Session = Depends(get_db)
+
+@router.get("/all-employee/{company_id}")
+async def allEmployee(
+    company_id:int,
+    db:Session = Depends(get_db)
 ):
-    employees = db.query(User).filter(
-        User.role == UserRole.EMPLOYEE,
-    ).all()
-    
-    return employees
+    employees = db.query(Employee).filter(Employee.company_id==company_id).all() # Added .all() to fetch all results
+    return {"employees": [
+        {
+            "id": r.id,
+            "name": r.name,
+            "email": r.email, # Added email for display
+            "rfps_assigned": json.loads(r.rfps_assigned) if r.rfps_assigned else [], # Parse JSON string
+            "created_at": r.created_at.isoformat() if r.created_at else None # Add created_at
+        } for r in employees
+    ]}
 
 @router.get("/company_id/{user_id}")
 async def get_company_id(
@@ -112,6 +119,68 @@ async def getrfp(
         raise HTTPException(status_code=404, detail="RFP file not found")
     return StreamingResponse(
         iter([rfpfile.file_data]),
-        media_type=rfpfile.content_type,    
+        media_type=rfpfile.content_type,
         headers={"Content-Disposition": f"attachment; filename={rfpfile.filename}"}
     )
+
+@router.post("/admin/assign-rfp-to-employee/{employee_id}/{rfp_id}")
+async def assign_rfp_to_employee(
+    employee_id: int,
+    rfp_id: int,
+    db: Session = Depends(get_db)
+):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+    if not rfp:
+        raise HTTPException(status_code=404, detail="RFP not found")
+
+    # Assuming rfps_assigned is a JSON string of a list of RFP IDs
+    current_assigned_rfps = json.loads(employee.rfps_assigned) if employee.rfps_assigned else []
+
+    if rfp_id not in current_assigned_rfps:
+        current_assigned_rfps.append(rfp_id)
+        employee.rfps_assigned = json.dumps(current_assigned_rfps)
+        # Set RFP status to 'assigned' when assigned
+        rfp.status = "assigned"
+        db.add(employee)
+        db.add(rfp)
+        db.commit()
+        db.refresh(employee)
+        db.refresh(rfp)
+        return {"message": f"RFP {rfp_id} assigned to employee {employee_id} successfully."}
+    else:
+        raise HTTPException(status_code=409, detail=f"RFP {rfp_id} already assigned to employee {employee_id}.")
+
+@router.post("/admin/unassign-rfp/{employee_id}/{rfp_id}")
+async def unassign_rfp_from_employee(
+    employee_id: int,
+    rfp_id: int,
+    db: Session = Depends(get_db)
+):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    current_assigned_rfps = json.loads(employee.rfps_assigned) if employee.rfps_assigned else []
+
+    if rfp_id in current_assigned_rfps:
+        current_assigned_rfps.remove(rfp_id)
+        employee.rfps_assigned = json.dumps(current_assigned_rfps)
+        db.add(employee)
+        db.commit()
+        db.refresh(employee)
+
+        # Optionally, update the RFP status to "pending'
+        rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+        if rfp:
+            rfp.status = "pending"
+            db.add(rfp)
+            db.commit()
+            db.refresh(rfp)
+
+        return {"message": f"RFP {rfp_id} pending from employee {employee_id} successfully."}
+    else:
+        raise HTTPException(status_code=404, detail=f"RFP {rfp_id} not assigned to employee {employee_id}.")

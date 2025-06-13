@@ -116,6 +116,7 @@ export default function Login({ onLogin }: LoginProps) {
           password: registerForm.password,
         }),
       })
+    
 
       if (!response.ok) {
         const errorData = await response.json()

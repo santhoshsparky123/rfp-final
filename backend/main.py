@@ -7,6 +7,7 @@ from api import upload_rfp, upload_company_docs, response_for_each, final_rfp, d
 from api.super_admin import super_admin
 from api.admin import admin
 from api.user import user
+from api.employee import employee
 from api.all_company import router as company_router
 
 # Initialize FastAPI app
@@ -55,7 +56,7 @@ app.include_router(download_doc.router)
 app.include_router(super_admin.router)
 app.include_router(authendication.router)
 app.include_router(admin.router)
-# app.include_router(all_company.router)
+app.include_router(employee.router)
 app.include_router(user.router)
 app.include_router(company_router)
 

@@ -35,18 +35,21 @@ class Register(BaseModel):
 # -----------------------------------
 @router.post("/user/register")
 async def user_register(user: Register, db: Session = Depends(get_db)):
-    hashed_password = get_password_hash(user.password)
-    new_user = User(
-        username=user.username,
-        email=user.email,
-        hashed_password=hashed_password,
-        role=UserRole.USER,
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return {"message": "User created successfully", "user_id": new_user.id}
-
+    try:
+        hashed_password = get_password_hash(user.password)
+        new_user = User(
+            username=user.username,
+            email=user.email,
+            hashed_password=hashed_password,
+            role=UserRole.USER,
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"message": "User created successfully", "user_id": new_user.id}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"User already exits")
 
 # -----------------------------------
 # File Upload
