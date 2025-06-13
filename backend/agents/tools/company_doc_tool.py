@@ -36,14 +36,19 @@
 #     description="Useful for answering questions about company-related topics."
 # )
 import os
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores.pgvector import PGVector
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import PGVector
 from langchain.chains import RetrievalQA
 from langchain.tools import Tool
 from langchain_groq import ChatGroq
 from langchain_core.documents import Document
+from dotenv import load_dotenv
 
-raw_url = os.getenv("DATABASE_URL")
+load_dotenv()
+raw_url = os.getenv("VECTOR_DATABASE_URL")
+if not raw_url:
+    raise ValueError("DATABASE_URL environment variable is not set")
 PGVECTOR_CONNECTION_STRING = raw_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 # Load embeddings
@@ -70,7 +75,7 @@ def get_company_qa_tool(company_id: int) -> Tool:
         retriever=retriever,
         chain_type="stuff"
     )
-
+    print("helloooooooooooooooooooooooooooooooooooooo")
     return Tool(
         name=f"CompanyDocTool-{company_id}",
         func=company_qa.run,

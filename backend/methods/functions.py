@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 
-import fitz  # For PDFs
 import docx  # For Word
 import openpyxl  # For Excel
 from io import BytesIO
@@ -119,9 +118,22 @@ def get_company_from_subdomain(subdomain: str, db: Session):
     return company
 
 
-def extract_text_from_pdf(file_bytes: bytes) -> str:
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
-    return "\n".join([page.get_text() for page in doc])
+from langchain_community.document_loaders import PyPDFLoader
+from typing import List
+
+def extract_text_from_pdf(file_path: str) -> str:
+    loader = PyPDFLoader(file_path)
+    documents = loader.load()
+    # Combine all page contents into a single string
+    return "\n".join([doc.page_content for doc in documents])
+
+import tempfile
+def extract_text_from_pdf_bytes(file_bytes: bytes) -> str:
+    with tempfile.NamedTemporaryFile(delete=True, suffix=".pdf") as tmp:
+        tmp.write(file_bytes)
+        tmp.flush()
+        return extract_text_from_pdf(tmp.name)
+
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
     doc = docx.Document(BytesIO(file_bytes))

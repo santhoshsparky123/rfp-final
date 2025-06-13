@@ -3,6 +3,8 @@ import google.generativeai as genai
 from docx import Document
 from datetime import datetime
 import os
+from methods.functions import Depends,require_role,get_db,Session
+from models.schema import User,UserRole,RFP,Employee,Company
 
 # Optional: for converting Word to PDF
 from docx2pdf import convert  # You can replace this with another converter if needed
@@ -14,12 +16,20 @@ app = FastAPI()
 router = APIRouter(prefix="/api", tags=["RFP"])
 
 @router.post("/final-rfp", response_model=dict)
-def final_rfp(rfp_data: dict):
+def final_rfp(rfp_data: dict,
+    # current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.EMPLOYEE])),
+    db: Session = Depends(get_db)
+):
     """Generate the final proposal document for the RFP"""
+    company_id = rfp_data.get("company_id")
     rfp_id = rfp_data.get("rfp_id")
+    employee_id = rfp_data.get("employee_id")
+    if not company_id:
+        return {"error": "company ID is required"}
     if not rfp_id:
-        return {"error": "RFP ID is required"}
-
+        return {"error": "rfp_id not found"}
+    if not employee_id:
+        return {"error": "employee_id is not found"}
     # Generate content using Gemini
     llm = genai.GenerativeModel("gemini-1.5-flash")
 
@@ -38,81 +48,104 @@ def final_rfp(rfp_data: dict):
     )
 
     final_proposal_markdown = prompt.text  # or .content if that's the correct attribute
-
+    subdomain = db.query(Company).filter(Company.id==company_id).first()
     # Generate Word and PDF documents from proposal
-    file_paths = generate_proposal_document(rfp_id, {
+    file_paths = generate_and_upload_proposal(company_id, {
         "title": "RFP Response",
         "final_proposal": final_proposal_markdown
-    })
-
+    },subdomain)
+    docx_url = file_paths["docx_url"]
+    pdf_url = file_paths["pdf_url"]
+    
+    rfp = db.query(RFP).filter(RFP.id==rfp_id).first()
+    rfp.docx_url = docx_url
+    rfp.pdf_url = pdf_url
+    rfp.status = "Finished"
+    
+    # employee = db.query(Employee).filter(Employee.id==employee_id)
+    
     return file_paths
 
 
-def generate_proposal_document(rfp_id, responses):
-    """Generate a Word document and PDF from proposal responses"""
-    # Create Word document
-    doc = Document()
+import boto3
+import os
+from io import BytesIO
+from datetime import datetime
+from docx import Document
+from docx2pdf import convert  # Only works on Windows with MS Word installed
+import tempfile
+import uuid
 
-    # Add title
+def generate_and_upload_proposal(company_id, responses,subdomain):
+    # Setup document
+    doc = Document()
     title = responses.get("title", "RFP Response")
     doc.add_heading(title, 0)
+    doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d')}\n")
 
-    # Add date
-    doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d')}")
-    doc.add_paragraph("\n")
-
-    # Add content from markdown
     final_proposal = responses.get("final_proposal", "")
     if final_proposal:
-        # Split the markdown content by headings
         sections = final_proposal.split("## ")
-
         for i, section in enumerate(sections):
             if i == 0 and not section.startswith("#"):
                 doc.add_paragraph(section)
                 continue
-
             lines = section.split("\n", 1)
-            if len(lines) > 0:
-                heading = lines[0].strip()
-                doc.add_heading(heading, level=2)
-
-                if len(lines) > 1:
-                    content = lines[1]
-                    paragraphs = content.split("\n\n")
-                    for para in paragraphs:
-                        if para.strip():
-                            if para.strip().startswith("- "):
-                                bullet_items = para.split("- ")
-                                for item in bullet_items:
-                                    if item.strip():
-                                        doc.add_paragraph(item.strip(), style='List Bullet')
-                            else:
-                                doc.add_paragraph(para.strip())
+            heading = lines[0].strip()
+            doc.add_heading(heading, level=2)
+            if len(lines) > 1:
+                for para in lines[1].split("\n\n"):
+                    para = para.strip()
+                    if para.startswith("- "):
+                        for item in para.split("- "):
+                            if item.strip():
+                                doc.add_paragraph(item.strip(), style='List Bullet')
+                    elif para:
+                        doc.add_paragraph(para)
     else:
-        # Add individual question responses
         for q_id, response in responses.items():
-            if q_id != "final_proposal" and q_id != "title":
+            if q_id not in ["final_proposal", "title"]:
                 doc.add_heading(f"Question {q_id}", level=2)
                 doc.add_paragraph(response)
 
-    # Ensure output folder exists
-    os.makedirs("outputs", exist_ok=True)
+    # Save .docx to temp
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    filename_base = f"{title.replace(' ', '_')}_{timestamp}"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        docx_path = os.path.join(tmpdir, f"{filename_base}.docx")
+        pdf_path = os.path.join(tmpdir, f"{filename_base}.pdf")
+        doc.save(docx_path)
 
-    # File paths
-    docx_path = f"outputs/{rfp_id}_proposal.docx"
-    pdf_path = f"outputs/{rfp_id}_proposal.pdf"
-
-    # Save Word document
-    doc.save(docx_path)
-
-    # Convert to PDF
-    try:
+        # Convert to PDF
         convert(docx_path, pdf_path)
-    except Exception as e:
-        print(f"Error converting to PDF: {e}")
+
+        AWS_ACCESS_KEY_ID = os.getenv("ACCESS_KEY_AWS")
+        AWS_SECRET_ACCESS_KEY = os.getenv("SECRET_KEY_AWS")
+        BUCKET_NAME = "rfp-storage-bucket"
+        REGION = "us-east-1"  # use your S3 bucket region
+        # Upload both files to S3
+        s3 = boto3.client(
+            "s3",
+            region_name=REGION,
+            aws_access_key_id=AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+        )
+        
+        docx_key = f"proposals/{uuid.uuid4()}.{subdomain}.docx"
+        pdf_key = f"proposals/{uuid.uuid4()}.{subdomain}.pdf"
+
+        with open(docx_path, "rb") as docx_file:
+            s3.upload_fileobj(docx_file, BUCKET_NAME, docx_key, ExtraArgs={"ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}) #multipart-data
+
+        with open(pdf_path, "rb") as pdf_file:
+            s3.upload_fileobj(pdf_file, BUCKET_NAME, pdf_key, ExtraArgs={"ContentType": "application/pdf"})
+
+        docx_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{docx_key}"
+        pdf_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{pdf_key}"
 
     return {
-        "docx": docx_path,
-        "pdf": pdf_path if os.path.exists(pdf_path) else None
+        "status": "success",
+        "docx_url": docx_url,
+        "pdf_url": pdf_url
     }
+

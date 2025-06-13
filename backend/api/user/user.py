@@ -8,6 +8,8 @@ from methods.functions import get_password_hash, get_db
 from models.schema import User, UserRole, RFP, Company, CompanyCreate, SubscriptionStatus, OrderRequest
 from methods.functions import require_role  # Make sure this import path is correct
 from datetime import datetime, timedelta
+import boto3
+import uuid
 
 router = APIRouter(prefix="/api", tags=["user"])
 
@@ -48,22 +50,54 @@ async def upload_file(
     company = db.query(Company).filter(Company.id == companyid).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
+    
     subdomain = company.subdomain + "_"
     if file.content_type not in ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]:
         raise HTTPException(status_code=400, detail="Invalid file type. Only PDF or Word files allowed.")
 
-    file_data = await file.read()
+
+    AWS_ACCESS_KEY_ID = os.getenv("ACCESS_KEY_AWS")
+    AWS_SECRET_ACCESS_KEY = os.getenv("SECRET_KEY_AWS")
+    BUCKET_NAME = "rfp-storage-bucket"
+    REGION = "us-east-1"  # use your S3 bucket region
+
+    s3 = boto3.client(
+        "s3",
+        region_name=REGION,
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+    )
+
+    unique_filename = f"{uuid.uuid4()}.{subdomain + file.filename}"
+    
+    # Upload to S3
+    s3.upload_fileobj(
+        file.file,
+        BUCKET_NAME,
+        unique_filename,
+        ExtraArgs={
+            "ContentType": file.content_type
+        }
+        # Removed ExtraArgs={"ACL": "public-read"} due to ACLs not supported
+    )
+
+    file_url = f"https://{BUCKET_NAME}.s3.{REGION}.amazonaws.com/{unique_filename}"
+    
     document = RFP(
         uploaded_by=userid,
         company_id=companyid,
-        filename=subdomain + file.filename,
+        filename=unique_filename,
         content_type=file.content_type,
-        file_data=file_data,
+        file_url=file_url,
     )
     db.add(document)
     db.commit()
     db.refresh(document)
-    return {"message": "File uploaded successfully", "document_id": document.id}
+    return {
+        "user_id":userid,
+        "company_id":companyid,
+        "file_url": file_url
+    }
 
 
 class temp(BaseModel):
@@ -142,7 +176,7 @@ def create_order(order: OrderRequest):
     except Exception as e:
         print("hello")
         raise HTTPException(status_code=500, detail=f"Payment order creation failed: {e}")
-    
-  
-    
+
+
+
 

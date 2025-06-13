@@ -6,34 +6,35 @@ from fastapi import HTTPException, Depends, UploadFile, File
 from fastapi import APIRouter
 from typing import List
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel
 from typing import Dict, List
 from sqlalchemy.exc import SQLAlchemyError
-from methods.functions import extract_text_from_docx,extract_text_from_excel,extract_text_from_pdf
+from methods.functions import extract_text_from_docx,extract_text_from_excel,extract_text_from_pdf_bytes
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
-from langchain.embeddings import HuggingFaceEmbeddings
+# from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.vectorstores.pgvector import PGVector
 from langchain_core.documents import Document
 
 
+load_dotenv()
 router = APIRouter(prefix="/api",tags=["Admin"])
 
 # Admin endpoints
 @router.post("/admin/create-employee")
 async def create_employee(
     employee_data: EmployeeCreate,
-    current_user: User = Depends(require_role([UserRole.ADMIN])),
+    # current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: Session = Depends(get_db)
 ):
     hashed_password = get_password_hash(employee_data.password)
     employee = Employee(
-        username=employee_data.username,
+        name=employee_data.name,
         email=employee_data.email,
         hashed_password=hashed_password,
-        role=UserRole.EMPLOYEE,
         company_id=employee_data.company_id,
-        created_by=current_user.id
     )
     db.add(employee)
     db.commit()
@@ -97,7 +98,8 @@ async def getrfps(
             "content_type": r.content_type,
             "status": r.status,
             "uploaded_by": r.uploaded_by,
-            "created_at": r.created_at
+            "created_at": r.created_at,
+            "file_url":r.file_url
         } for r in rfps
     ]}
 
@@ -109,11 +111,13 @@ async def getrfp(
     rfpfile = db.query(RFP).filter(RFP.id == rfpid).first()
     if not rfpfile or not rfpfile.file_data:
         raise HTTPException(status_code=404, detail="RFP file not found")
-    return StreamingResponse(
-        iter([rfpfile.file_data]),
-        media_type=rfpfile.content_type,
-        headers={"Content-Disposition": f"attachment; filename={rfpfile.filename}"}
-    )
+    return {
+        "filename":rfpfile.filename,
+        "content-type":rfpfile.content_type,
+        "uploaded_by":rfpfile.uploaded_by,
+        "created_at":rfpfile.created_at,
+        "file_url":rfpfile.file_url
+    }
 
 @router.get("/rfp-status/{company_id}")
 async def rfpStatus(
@@ -126,21 +130,24 @@ async def rfpStatus(
             "id": r.id,
             "filename": r.filename,
             "content_type": r.content_type,
-            "uploaded_by": r.uploaded_by
+            "uploaded_by": r.uploaded_by,
+            "file_url":r.file_url
         } for r in rfpfile
     ]}
 
 # Sample Pydantic model
 class Assigned(BaseModel):
-    __root__: Dict[int, List[int]]  # key = employee ID, value = list of RFP IDs
+    company_id: int
+    assignments: Dict[str, List[int]]
 
-@router.post("/rfp-assigned/{company_id}")
+@router.post("/rfp-assigned")
 async def rfp_status(
     temp: Assigned,
     db: Session = Depends(get_db)
 ):
     try:
-        for emp_id, rfps in temp.__root__.items():
+        for emp_id, rfps in temp.assignments.items():
+            emp_id = int(emp_id)
             employee = db.query(Employee).filter(Employee.id == emp_id).first()
             if not employee:
                 continue  # or handle error
@@ -152,12 +159,14 @@ async def rfp_status(
             # Add new RFP IDs to the existing list, avoiding duplicates
             for rfpid in rfps:
                 if rfpid not in employee.rfps_assigned:
+                    rfp = db.query(RFP).filter(RFP.id==rfpid).first()
+                    rfp.status = "Assigned"
                     employee.rfps_assigned.append(rfpid)
 
         db.commit()
 
         return {
-            "rfp2-employees": temp.__root__,
+            "rfp2-employees": temp.assignments,
             "status": "Assigned"
         }
     except SQLAlchemyError as e:
@@ -165,10 +174,12 @@ async def rfp_status(
         return {"error": str(e)}
 
 
-
+load_dotenv()
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-raw_url = os.getenv("DATABASE_URL")
+raw_url = os.getenv("VECTOR_DATABASE_URL")
+if not raw_url:
+    raise RuntimeError("DATABASE_URL environment variable is not set. Please set it in your .env file or environment.")
 PGVECTOR_CONNECTION_STRING = raw_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 vectorstore = PGVector(
@@ -184,7 +195,7 @@ async def add_document(company_id: int = Form(...), file: UploadFile = File(...)
     filename = file.filename.lower()
 
     if filename.endswith(".pdf"):
-        text = extract_text_from_pdf(file_bytes)
+        text = extract_text_from_pdf_bytes(file_bytes)
     elif filename.endswith(".docx"):
         text = extract_text_from_docx(file_bytes)
     elif filename.endswith(".xlsx"):
@@ -195,9 +206,10 @@ async def add_document(company_id: int = Form(...), file: UploadFile = File(...)
     if not text.strip():
         return {"error": "No extractable text found in the document."}
 
+    print("vectorizing")
     doc = Document(page_content=text, metadata={"company_id": company_id})
     vectorstore.add_documents([doc])
-
+    print(doc)
     return {
         "message": f"{filename} embedded for company {company_id}",
         "characters": len(text)
@@ -205,6 +217,5 @@ async def add_document(company_id: int = Form(...), file: UploadFile = File(...)
 
 
 
-    
-    
-    
+
+

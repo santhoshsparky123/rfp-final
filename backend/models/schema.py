@@ -59,18 +59,16 @@ class RFP(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, index=True)
-    # description = Column(Text)
-    # file_path = Column(String)
     content_type = Column(String)
     status = Column(String, default="pending")
     uploaded_by = Column(Integer, ForeignKey("users.id"))
     company_id = Column(Integer, ForeignKey("companies.id"))
-    # response_content = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
-    file_data = Column(LargeBinary)
-    # Relationships
-    # company = relationship("Company", back_populates="rfps")
-    # uploader = relationship("User")
+    # file_data = Column(LargeBinary)
+    file_url = Column(String, nullable=False)
+    docx_url = Column(String, nullable=False)
+    pdf_url = Column(String, nullable=False)
+
 
 class Employee(Base):
     __tablename__ = "employee"
@@ -82,14 +80,6 @@ class Employee(Base):
     rfps_assigned = Column(JSONB, default=list)
     created_at = Column(DateTime, default = datetime.utcnow)
 
-# class Document(Base):
-#     __tablename__ = "documents"
-
-#     id = Column(Integer, primary_key=True, index=True)
-#     company_id = Column(Integer,ForeignKey("Companies.id"))
-#     content = Column(Text, nullable=False)
-#     embedding = Column(Vector(384))  # 384 dimensions for all-MiniLM-L6-v2
-    
 # Pydantic Models
 class UserCreate(BaseModel):
     username: str
@@ -98,10 +88,9 @@ class UserCreate(BaseModel):
     role: UserRole
 
 class EmployeeCreate(BaseModel):
-    username: str
+    name: str
     email: EmailStr
     password: str
-    role: UserRole
     company_id: int
     
 class CompanyCreate(BaseModel):

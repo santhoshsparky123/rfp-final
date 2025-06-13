@@ -126,7 +126,7 @@ router = APIRouter(prefix="/api", tags=["RFP"])
 @router.post("/generate-response", response_model=dict)
 async def generate_response(
     json_data: dict,
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.EMPLOYEE])),
+    # current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.EMPLOYEE])),
     db: Session = Depends(get_db)
 ):
     try:
@@ -138,26 +138,32 @@ async def generate_response(
         questions = json_data["structured_data"]["questions"]
         requirements = json_data["structured_data"]["requirements"]
 
+
+        company_id = json_data["company_id"]
+        rfp_id = json_data["rfp_id"]
+        employee_id = json_data["employee_id"]
+        
         final_output = {
-            "rfp_id": json_data["rfp_id"],
+            "company_id": company_id,
+            "rfp_id":rfp_id,
+            "employee_id":employee_id,
             "metadata": metadata,
             "sections": [],
             "questions": [],
             "requirements": []
         }
-
-        company_id = None
-        if(current_user.role=="employee"):
-            company_id = db.query(Employee).filter(Employee.company_id==current_user.id).first().company_id
-        else:
-            company_id = db.query(Company).filter(Company.userid == current_user.id).first()
+        # if(current_user.role=="employee"):
+        #     company_id = db.query(Employee).filter(Employee.company_id==current_user.id).first().company_id
+        # else:
+        #     company_id = db.query(Company).filter(Company.userid == current_user.id).first()
 
         CompanyDocTool = get_company_qa_tool(company_id)
+        print(company_id)
         # Tools
-        tools = [CompanyDocTool,WikipediaTool, FallbackLLMTool]
+        tools = [CompanyDocTool, WikipediaTool, FallbackLLMTool]
 
 # Use Google Generative AI model
-        llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key = "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")
+        llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key = os.getenv("GROQ_API_KEY"))
 
         agent_executor = initialize_agent(
             tools,

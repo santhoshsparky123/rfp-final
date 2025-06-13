@@ -30,3 +30,5 @@ pycryptodome
 sqlalchemy
 pgvector
 sentence-transformers
+boto3
+python-multipart

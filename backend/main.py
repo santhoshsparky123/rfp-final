@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from dotenv import load_dotenv
 import google.generativeai as genai
-from api import upload_rfp, upload_company_docs, response_for_each, final_rfp, download_doc, authendication, all_company
-from api.super_admin import super_admin
+from api import response_for_each, final_rfp, download_doc, authendication, all_company
+# from api.super_admin import super_admin
 from api.admin import admin
 from api.user import user
 # Initialize FastAPI app
@@ -44,15 +44,14 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "ok", "version": "1.0.0"}
 
-app.include_router(upload_rfp.router)
-app.include_router(upload_company_docs.router)
+# app.include_router(upload_company_docs.router)
 app.include_router(response_for_each.router)
-app.include_router(final_rfp.router)
-app.include_router(download_doc.router)
-app.include_router(super_admin.router)
-app.include_router(authendication.router)
+# app.include_router(final_rfp.router)
+# app.include_router(download_doc.router)
+# app.include_router(super_admin.router)
+# app.include_router(authendication.router)
 app.include_router(admin.router)
-app.include_router(all_company.router)
+# app.include_router(all_company.router)
 app.include_router(user.router)
 if __name__ == "__main__":
     import uvicorn
