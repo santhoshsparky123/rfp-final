@@ -54,16 +54,22 @@ def final_rfp(rfp_data: dict,
         "title": "RFP Response",
         "final_proposal": final_proposal_markdown
     },subdomain)
-    docx_url = file_paths["docx_url"]
-    pdf_url = file_paths["pdf_url"]
-    
+    docx_url = file_paths.get("docx_url")
+    pdf_url = file_paths.get("pdf_url")
+    print(docx_url)
+    print(pdf_url)
     rfp = db.query(RFP).filter(RFP.id==rfp_id).first()
     rfp.docx_url = docx_url
     rfp.pdf_url = pdf_url
-    rfp.status = "Finished"
+    rfp.status = "finished"
+    db.commit()
     
+    employee = db.query(Employee).filter(Employee.id==employee_id).first()
+    if(rfp_id in employee.rfps_assigned):
+        employee.rfps_assigned.remove(rfp_id)
+    db.commit()
+    db.refresh(employee)
     # employee = db.query(Employee).filter(Employee.id==employee_id)
-    
     return file_paths
 
 
@@ -135,7 +141,9 @@ def generate_and_upload_proposal(company_id, responses,subdomain):
         pdf_key = f"proposals/{uuid.uuid4()}.{subdomain}.pdf"
 
         with open(docx_path, "rb") as docx_file:
-            s3.upload_fileobj(docx_file, BUCKET_NAME, docx_key, ExtraArgs={"ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}) #multipart-data
+            s3.upload_fileobj(docx_file, BUCKET_NAME, docx_key, ExtraArgs={"ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document","ContentDisposition": "inline"}
+            
+        ) #multipart-data
 
         with open(pdf_path, "rb") as pdf_file:
             s3.upload_fileobj(pdf_file, BUCKET_NAME, pdf_key, ExtraArgs={"ContentType": "application/pdf"})

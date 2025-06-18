@@ -1,8 +1,9 @@
+// rfp-upload.tsx
 "use client"
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,22 +11,97 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Upload, FileText, AlertCircle, Brain, X, File } from "lucide-react"
 
-interface RFPUploadProps {
-  onUploadSuccess: (data: any) => void
+// Updated UserContext interface to explicitly include companyId, employeeId, filename, and fileUrl
+interface UserContext {
+  userId: number;
+  companyId: number;
+  employeeId: number;
+  authToken?: string;
+  filename?: string;
+  fileUrl?: string;
 }
 
-export default function RFPUpload({ onUploadSuccess }: RFPUploadProps) {
+interface RFPUploadProps {
+  onUploadSuccess: (data: any) => void;
+  userContext: UserContext; // Pass the updated UserContext
+}
+
+export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [processingStage, setProcessingStage] = useState<string | null>(null)
   const [currentSlide, setCurrentSlide] = useState(0)
+  const [companyId, setCompanyId] = useState<number | null>(null);
+  const [rfpId, setRfpId] = useState<number | null>(null);
+  // Add state for filename and fileUrl
+  const [filename, setFilename] = useState<string | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+
+  // This effect could be used if userContext needs to be loaded asynchronously
+  useEffect(() => {
+    // Validate that required IDs are present in the userContext
+    if (!userContext.userId || !userContext.companyId || !userContext.employeeId) {
+      setError("User authentication context is incomplete. Please log in again or contact support.")
+    } else {
+      setError(null); // Clear error if context is valid
+    }
+  }, [userContext]);
+
+  // Fetch all upload context from backend using the new API
+  useEffect(() => {
+    const fetchUploadContext = async () => {
+      if (userContext.employeeId) {
+        const response = await fetch(
+          `http://localhost:8000/api/upload-rfp`
+        );
+        if (!response.ok) {
+          setError("Failed to fetch upload context");
+          setCompanyId(null);
+          setRfpId(null);
+          setFilename(null);
+          setFileUrl(null);
+          return;
+        }
+        const data = await response.json();
+        setCompanyId(data.company_id || null);
+        setRfpId(data.rfp_id || null);
+        setFilename(data.filename || null);
+        setFileUrl(data.file_url || null);
+      } else {
+        setCompanyId(null);
+        setRfpId(null);
+        setFilename(null);
+        setFileUrl(null);
+      }
+    };
+    fetchUploadContext();
+  }, [userContext.employeeId]);
+
+  // Automatically upload when fileUrl and filename are set (from Process button)
+  useEffect(() => {
+    // Set filename and fileUrl from userContext if they exist
+    if (userContext.filename && userContext.fileUrl) {
+      setFilename(userContext.filename);
+      setFileUrl(userContext.fileUrl);
+      setSelectedFile(null); // Ensure no local file is selected if we are using a URL
+    }
+  }, [userContext.filename, userContext.fileUrl]);
+
+
+  // Trigger upload if fileUrl and filename are available and not already uploading
+  useEffect(() => {
+    if (fileUrl && filename && !uploading && !selectedFile) {
+        handleUpload();
+    }
+  }, [fileUrl, filename, selectedFile, uploading]); // Added selectedFile and uploading to dependency array
+
 
   const processingSlides = [
     {
       title: "Reading Document",
       subtitle: "Analyzing document structure and content",
-      icon: "📖",
+      icon: "⚙️",
       color: "from-blue-500 to-blue-600",
       bgColor: "from-blue-50 to-blue-100",
       steps: [
@@ -38,7 +114,7 @@ export default function RFPUpload({ onUploadSuccess }: RFPUploadProps) {
     {
       title: "Processing Content",
       subtitle: "Understanding requirements and questions",
-      icon: "🔍",
+      icon: "🧠",
       color: "from-purple-500 to-purple-600",
       bgColor: "from-purple-50 to-purple-100",
       steps: [
@@ -51,7 +127,7 @@ export default function RFPUpload({ onUploadSuccess }: RFPUploadProps) {
     {
       title: "AI Analysis",
       subtitle: "Intelligent content structuring",
-      icon: "🧠",
+      icon: "✨",
       color: "from-green-500 to-green-600",
       bgColor: "from-green-50 to-green-100",
       steps: ["Running AI analysis...", "Structuring data...", "Validating content...", "Finalizing results..."],
@@ -74,6 +150,8 @@ export default function RFPUpload({ onUploadSuccess }: RFPUploadProps) {
       ) {
         setSelectedFile(file)
         setError(null)
+        setFilename(file.name); // Set filename from selected file
+        setFileUrl(null); // Clear fileUrl if a new file is selected
       } else {
         setError("Please select a PDF or Word document")
         setSelectedFile(null)
@@ -84,14 +162,16 @@ export default function RFPUpload({ onUploadSuccess }: RFPUploadProps) {
   const handleRemoveFile = () => {
     setSelectedFile(null)
     setError(null)
+    setFilename(null);
+    setFileUrl(null);
     // Reset file input
     const fileInput = document.getElementById("rfp-file") as HTMLInputElement
     if (fileInput) fileInput.value = ""
   }
 
-  const getFileIcon = (file: File) => {
+  const getFileIcon = (file: File | { name: string, type?: string }) => {
     const fileName = file.name.toLowerCase()
-    const fileType = file.type
+    const fileType = (file as File).type || ''; // Handle case where type might not be present for { name, type? }
 
     if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
       return (
@@ -120,10 +200,27 @@ export default function RFPUpload({ onUploadSuccess }: RFPUploadProps) {
   }
 
   const handleUpload = async () => {
-    if (!selectedFile) {
-      setError("Please select a file first")
+    if (!selectedFile && !(fileUrl && filename)) { // Updated condition
+      setError("Please select a file or provide a file URL first")
       return
     }
+
+    // Ensure user context has all required IDs before proceeding
+    if (!userContext.userId || !userContext.employeeId) { // Removed companyId from this check
+      setError("User context is incomplete. Cannot upload.")
+      return;
+    }
+    
+    // Ensure companyId and rfpId are fetched/set before proceeding
+    if (companyId === null || companyId === undefined) {
+      setError("Company ID is missing. Cannot upload.");
+      return;
+    }
+    if (rfpId === null || rfpId === undefined) {
+      setError("RFP ID is missing. Cannot upload.");
+      return;
+    }
+
 
     setUploading(true)
     setError(null)
@@ -144,23 +241,60 @@ export default function RFPUpload({ onUploadSuccess }: RFPUploadProps) {
         await new Promise((resolve) => setTimeout(resolve, 500))
       }
 
-      const formData = new FormData()
-      formData.append("file", selectedFile)
+      const formData = new FormData();
+      formData.append("company_id", String(companyId)); // Use the fetched companyId
+      formData.append("employee_id", String(userContext.employeeId));
+      formData.append("rfp_id", String(rfpId)); // Use the fetched rfpId
+      
+      if (selectedFile) {
+        formData.append("file", selectedFile);
+        formData.append("filename", selectedFile.name);
+        console.log('Appending local file:', selectedFile.name);
+      } else if (fileUrl && filename) { // Ensure both are present for URL upload
+        formData.append("file_url", fileUrl);
+        formData.append("filename", filename); // Use the filename derived from the URL or passed in props
+        console.log('Appending file_url:', fileUrl);
+        console.log('Appending filename for URL:', filename);
+      } else {
+        setError("No file or file URL provided for upload.");
+        setUploading(false);
+        return;
+      }
+      // Debug log all form data
+      for (let pair of formData.entries()) {
+        console.log(pair[0]+ ':', pair[1]);
+      }
+
+      const headers: HeadersInit = {};
+      if (userContext.authToken) {
+        headers['Authorization'] = `Bearer ${userContext.authToken}`;
+      }
 
       const response = await fetch("http://localhost:8000/api/upload-rfp/", {
         method: "POST",
         body: formData,
+        headers: headers, // Include auth token if your backend uses it
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || "Failed to upload RFP")
+        const errorData = await response.json();
+        let errorMsg = "Failed to upload RFP";
+        if (errorData.detail) {
+          if (typeof errorData.detail === "string") {
+            errorMsg = errorData.detail;
+          } else if (Array.isArray(errorData.detail)) {
+            errorMsg = errorData.detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ");
+          } else if (typeof errorData.detail === "object") {
+            errorMsg = JSON.stringify(errorData.detail);
+          }
+        }
+        throw new Error(errorMsg);
       }
 
       const data = await response.json()
       console.log("RFP Upload Response:", data)
 
-      onUploadSuccess(data)
+      onUploadSuccess(data) // Pass the full response data
     } catch (err) {
       console.error("Upload error:", err)
       setError(err instanceof Error ? err.message : "Failed to process RFP. Please try again.")
@@ -273,94 +407,153 @@ export default function RFPUpload({ onUploadSuccess }: RFPUploadProps) {
         </div>
       )}
 
-      {/* Upload Form - Hidden during processing */}
+      {/* Upload Form - Conditional Rendering */}
       {!uploading && (
-        <>
-          <Card className="border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors duration-200">
-            <CardContent className="p-8">
-              <div className="space-y-6">
-                <div className="space-y-4">
-                  <Label htmlFor="rfp-file" className="text-sm font-medium text-gray-700">
-                    Choose File
-                  </Label>
-                  <div className="mt-2">
-                    <Input
-                      id="rfp-file"
-                      type="file"
-                      accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
-                      onChange={handleFileSelect}
-                      className="h-12 rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Supported formats: PDF (.pdf) and Word documents (.doc, .docx)
-                  </p>
-                </div>
-
-                {selectedFile && (
+        (userContext.fileUrl && userContext.filename) ? ( // Condition to render when fileUrl and filename are present from userContext
+          <>
+            <Card className="border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors duration-200">
+              <CardContent className="p-8">
+                <div className="space-y-6">
                   <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        {getFileIcon(selectedFile)}
+                        {getFileIcon({ name: userContext.filename, type: userContext.filename.endsWith(".pdf") ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })}
                         <div>
-                          <div className="font-medium text-gray-900">{selectedFile.name}</div>
-                          <div className="text-sm text-gray-600">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</div>
+                          <div className="font-medium text-gray-900">{userContext.filename}</div>
+                          <div className="text-sm text-gray-600">File URL provided</div>
                         </div>
                       </div>
-                      <Button
-                        onClick={handleRemoveFile}
-                        variant="ghost"
-                        size="sm"
-                        className="text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
+                      {/* No remove button here as it's a provided URL, not a local upload */}
                     </div>
                   </div>
-                )}
 
-                <Button
-                  onClick={handleUpload}
-                  disabled={!selectedFile || uploading}
-                  className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl font-semibold shadow-lg"
-                >
-                  {uploading ? (
-                    <>
-                      <Brain className="w-5 h-5 mr-2 animate-spin" />
-                      Processing Document...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-5 h-5 mr-2" />
-                      Upload & Process Document
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="mt-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
-            <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-              <Brain className="w-5 h-5" />
-              What happens next?
-            </h3>
-            <div className="space-y-2 text-sm text-blue-800">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                AI analyzes your document structure and content
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                Extracts questions, requirements, and key sections
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                Prepares data for intelligent response generation
+                  <Button
+                    onClick={handleUpload}
+                    disabled={uploading || !!error} // Disable if error in userContext
+                    className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl font-semibold shadow-lg"
+                  >
+                    {uploading ? (
+                      <>
+                        <Brain className="w-5 h-5 mr-2 animate-spin" />
+                        Processing Document...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-5 h-5 mr-2" />
+                        Process Document from URL
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+            <div className="mt-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
+              <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                <Brain className="w-5 h-5" />
+                What happens next?
+              </h3>
+              <div className="space-y-2 text-sm text-blue-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                  AI analyzes your document structure and content
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                  Extracts questions, requirements, and key sections
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                  Prepares data for intelligent response generation
+                </div>
               </div>
             </div>
-          </div>
-        </>
+          </>
+        ) : ( // Original upload form for local file selection
+          <>
+            <Card className="border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors duration-200">
+              <CardContent className="p-8">
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <Label htmlFor="rfp-file" className="text-sm font-medium text-gray-700">
+                      Choose File
+                    </Label>
+                    <div className="mt-2">
+                      <Input
+                        id="rfp-file"
+                        type="file"
+                        accept=".pdf,.doc,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                        onChange={handleFileSelect}
+                        className="h-12 rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Supported formats: PDF (.pdf) and Word documents (.doc, .docx)
+                    </p>
+                  </div>
+
+                  {selectedFile && (
+                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                      <div className="flex items-center gap-3">
+                          {getFileIcon(selectedFile)}
+                          <div>
+                            <div className="font-medium text-gray-900">{selectedFile.name}</div>
+                            <div className="text-sm text-gray-600">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</div>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleRemoveFile}
+                          variant="ghost"
+                          size="sm"
+                          className="text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                  )}
+
+                  <Button
+                    onClick={handleUpload}
+                    disabled={!selectedFile || uploading || !!error} // Disable if error in userContext
+                    className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl font-semibold shadow-lg"
+                  >
+                    {uploading ? (
+                      <>
+                        <Brain className="w-5 h-5 mr-2 animate-spin" />
+                        Processing Document...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-5 h-5 mr-2" />
+                        Upload & Process Document
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="mt-8 p-6 bg-blue-50 rounded-xl border border-blue-200">
+              <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                <Brain className="w-5 h-5" />
+                What happens next?
+              </h3>
+              <div className="space-y-2 text-sm text-blue-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                  AI analyzes your document structure and content
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                  Extracts questions, requirements, and key sections
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                  Prepares data for intelligent response generation
+                </div>
+              </div>
+            </div>
+          </>
+        )
       )}
     </div>
   )

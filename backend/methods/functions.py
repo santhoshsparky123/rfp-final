@@ -5,7 +5,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from fastapi.security.http import HTTPAuthorizationCredentials
 from fastapi.security import HTTPBearer
-from models.schema import User, UserRole, Company, SubscriptionStatus
+from models.schema import User, UserRole, Company, SubscriptionStatus,Employee
 from jose import JWTError, jwt  # Add this import for JWTError and jwt
 import os
 from dotenv import load_dotenv
@@ -111,6 +111,37 @@ def require_role(required_roles: List[UserRole]):
         return current_user
     return role_checker
 
+def require_role1(required_roles: List[UserRole]):
+    def role_checker1(current_user: Employee = Depends(get_current_user1)):
+        if current_user.role not in required_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions"
+            )
+        return current_user
+    return role_checker1
+
+def get_current_user1(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    user = db.query(Employee).filter(Employee.name == username).first()
+    if user is None:
+        raise credentials_exception
+    return user
+    
+    
+    
 def get_company_from_subdomain(subdomain: str, db: Session):
     company = db.query(Company).filter(Company.subdomain == subdomain).first()
     if not company:
@@ -137,10 +168,16 @@ def extract_text_from_pdf(file_path: str) -> str:
 
 import tempfile
 def extract_text_from_pdf_bytes(file_bytes: bytes) -> str:
-    with tempfile.NamedTemporaryFile(delete=True, suffix=".pdf") as tmp:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(file_bytes)
         tmp.flush()
-        return extract_text_from_pdf(tmp.name)
+        tmp_path = tmp.name
+
+    try:
+        text = extract_text_from_pdf(tmp_path)
+    finally:
+        os.remove(tmp_path)
+    return text
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:

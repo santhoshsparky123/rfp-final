@@ -56,8 +56,8 @@ embeddings = HuggingFaceEmbeddings(model_name='all-MiniLM-L6-v2')
 
 # LLM (Groq + LLaMA 3)
 llm = ChatGroq(
-    model="llama3-70b-8192",
-    groq_api_key="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"
+    model="llama-3.3-70b-versatile",
+    groq_api_key = "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"
 )
 
 def get_company_qa_tool(company_id: int) -> Tool:

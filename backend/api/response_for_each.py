@@ -101,13 +101,12 @@
 #         print("Exception in generate_response:", traceback.format_exc())
 #         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body
 # from langchain_community.chat_models import ChatGroq
 from langchain.agents import initialize_agent
 from langchain.agents.agent_types import AgentType
 from agents.tools.company_doc_tool import get_company_qa_tool
-from agents.tools.pricing_tool import PricingDocTool
-#from agents.tools.wikipedia_tool import WikipediaTool
+from agents.tools.wikipedia_tool import WikipediaTool
 from agents.tools.fall_back_tool import FallbackLLMTool
 import asyncio
 import os
@@ -125,13 +124,11 @@ router = APIRouter(prefix="/api", tags=["RFP"])
 
 @router.post("/generate-response", response_model=dict)
 async def generate_response(
-    json_data: dict,
+    json_data: dict = Body(...),
     # current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.EMPLOYEE])),
     db: Session = Depends(get_db)
 ):
     try:
-        if "rfp_id" not in json_data:
-            raise HTTPException(status_code=400, detail="RFP ID not found in structured data")
         
         metadata = json_data["structured_data"]["metadata"]
         sections = json_data["structured_data"]["sections"]
@@ -139,9 +136,9 @@ async def generate_response(
         requirements = json_data["structured_data"]["requirements"]
 
 
-        company_id = json_data["company_id"]
-        rfp_id = json_data["rfp_id"]
-        employee_id = json_data["employee_id"]
+        company_id = json_data.get("company_id")
+        rfp_id = json_data.get("rfp_id")
+        employee_id = json_data.get("employee_id")
         
         final_output = {
             "company_id": company_id,
@@ -160,11 +157,11 @@ async def generate_response(
         CompanyDocTool = get_company_qa_tool(company_id)
         print(company_id)
         # Tools
-        tools = [CompanyDocTool, WikipediaTool, FallbackLLMTool]
+        tools = [CompanyDocTool,FallbackLLMTool]
 
 # Use Google Generative AI model
-        llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key = os.getenv("GROQ_API_KEY"))
-
+        llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key = "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")
+        print("GROQ_API_KEY:", os.getenv("GROQ_API_KEY"))
         agent_executor = initialize_agent(
             tools,
             llm,

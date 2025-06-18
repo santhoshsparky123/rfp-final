@@ -124,7 +124,6 @@ def extract_rfp_structure(file_path):
                 raise ValueError("No JSON object found in LLM response.")
             json_str = content[json_start:json_end]
         structured_data = json.loads(json_str)
-        print("structure data", structured_data)
         return structured_data
     except Exception as e:
         print(f"Error extracting JSON: {e}")

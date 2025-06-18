@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -36,6 +34,7 @@ import {
   PlusCircle,
   LayoutDashboard, // For dashboard icon
   RefreshCw, // For unassign action
+  UploadCloud, // Added for upload document
 } from "lucide-react"
 
 interface AdminDashboardProps {
@@ -76,6 +75,7 @@ interface RFP {
   created_at: string
   assigned_to_worker_id?: string // Optional: To store the ID of the worker it's assigned to
   assigned_to_worker_name?: string // Optional: To store the name of the worker it's assigned to
+  file_url: string // <-- Add this line
 }
 
 export default function AdminDashboard({ user, onLogout, token }: AdminDashboardProps) {
@@ -86,6 +86,8 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showAssignRfpDialog, setShowAssignRfpDialog] = useState(false)
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+  const [showUploadDocumentDialog, setShowUploadDocumentDialog] = useState(false) // New state for upload dialog
+  const [newDocument, setNewDocument] = useState<File | null>(null) // New state for selected document file
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -99,10 +101,12 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
 
   const [activeContent, setActiveContent] = useState<"dashboard" | "workers" | "rfps">("dashboard")
 
+  const [usernames, setUsernames] = useState<{ [userId: number]: string }>({});
+
   // Function to fetch company ID
   const fetchCompanyId = useCallback(async (userId: string) => {
     try {
-      const companyIdResponse = await fetch(`http://localhost:8000/api/company_id/${userId}`)
+      const companyIdResponse = await fetch(`http://localhost:8000/api/company_id/${userId}`) // Updated route
       if (!companyIdResponse.ok) {
         throw new Error(`Failed to fetch company ID: HTTP status ${companyIdResponse.status}`)
       }
@@ -114,6 +118,22 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
       return null
     }
   }, [])
+
+  // Helper to fetch username by user ID
+  const fetchUsername = useCallback(async (userId: number) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/fetch-username/${userId}`);
+      const data = await res.json();
+      if (data.username) {
+        setUsernames(prev => ({ ...prev, [userId]: data.username }));
+        return data.username;
+      }
+    } catch (e) {
+      console.error("Failed to fetch username for userId", userId, e);
+    }
+    setUsernames(prev => ({ ...prev, [userId]: userId.toString() }));
+    return userId.toString();
+  }, []);
 
   // Function to fetch workers
   const fetchWorkers = useCallback(async () => {
@@ -201,6 +221,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
           created_at: rfp.created_at ? new Date(rfp.created_at).toLocaleDateString() : "N/A",
           assigned_to_worker_id: rfp.assigned_to_worker_id || undefined, // Populate if available from backend
           assigned_to_worker_name: rfp.assigned_to_worker_name || undefined, // Populate if available from backend
+          file_url: rfp.file_url // <-- Add this line
         })),
       )
 
@@ -222,6 +243,16 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
   useEffect(() => {
     fetchRfps()
   }, [fetchRfps])
+
+  // When fetching RFPs, also fetch usernames for uploaded_by
+  useEffect(() => {
+    if (rfps.length > 0) {
+      const uniqueUserIds = Array.from(new Set(rfps.map((r) => r.uploaded_by)));
+      uniqueUserIds.forEach((id) => {
+        if (!usernames[id]) fetchUsername(id);
+      });
+    }
+  }, [rfps, fetchUsername, usernames]);
 
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -380,15 +411,15 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     }
   }
 
-  const handleDownloadRFP = async (rfpId: number, filename: string) => {
+  const handleDownloadRFP = async (rfpId: number, filename: string, file_url: string) => {
     setLoading(true)
     setError(null)
     setSuccess(null)
 
     try {
       // Assuming your backend has an endpoint to download the RFP content
-      // e.g., GET /api/download-rfp/{rfpId}
-      const response = await fetch(`http://localhost:8000/api/download_rfp/${rfpId}`, {
+      // e.g., GET /api/get_rfp/{rfpId}
+      const response = await fetch(`http://localhost:8000/api/get_rfp/${rfpId}`, { // Updated route
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -407,19 +438,85 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
       // Create a temporary link element
       const a = document.createElement('a');
       a.href = url;
-      a.download = filename; // Use the original filename for download
+      a.download = file_url; // Use the original filename for download
       document.body.appendChild(a);
       a.click();
       a.remove(); // Clean up the temporary link
       window.URL.revokeObjectURL(url); // Release the object URL
 
-      setSuccess(`RFP ${filename} downloaded successfully!`);
+      setSuccess(`RFP ${file_url} downloaded successfully!`);
     } catch (err: any) {
       setError(`Failed to download RFP: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
+
+  // New functions for document upload
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setNewDocument(e.target.files[0])
+    } else {
+      setNewDocument(null)
+    }
+  }
+
+  const handleUploadDocument = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    if (!newDocument) {
+      setError("Please select a file to upload.")
+      setLoading(false)
+      return
+    }
+
+    try {
+      const company_id_for_document = await fetchCompanyId(user.id)
+      if (!company_id_for_document) {
+        setLoading(false)
+        return
+      }
+
+      const formData = new FormData()
+      formData.append("file", newDocument)
+      formData.append("company_id", company_id_for_document.toString()) // Ensure company_id is a string if expected
+
+      const response = await fetch("http://localhost:8000/api/add-document/", { // Updated route
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+        body: formData,
+      })
+
+      if (!response.ok) {
+        let errorMsg = `HTTP error! status: ${response.status}`
+        try {
+          const errorData = await response.json()
+          errorMsg = errorData.detail || JSON.stringify(errorData) || errorMsg
+        } catch (e) {
+          try {
+            const text = await response.text()
+            errorMsg = text || errorMsg
+          } catch {}
+        }
+        throw new Error(errorMsg)
+      }
+
+      setSuccess(`Document "${newDocument.name}" uploaded successfully!`)
+      setNewDocument(null)
+      setShowUploadDocumentDialog(false)
+      fetchRfps() // Refresh the RFP list to show the newly uploaded document
+    } catch (err: any) {
+      setError(`Failed to upload document: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
 
   const totalRFPs = rfps.length
   const activeWorkers = workers.filter((worker) => worker.status === "active").length
@@ -525,6 +622,57 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                     type="button"
                     variant="outline"
                     onClick={() => setShowCreateDialog(false)}
+                    className="flex-1 rounded-xl"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* New Button: Upload Company Document */}
+          <Dialog open={showUploadDocumentDialog} onOpenChange={setShowUploadDocumentDialog}>
+            <DialogTrigger asChild>
+              <Button className="w-full bg-green-600 hover:bg-green-700 rounded-xl shadow-lg mb-3">
+                <UploadCloud className="w-4 h-4 mr-2" />
+                Upload Company Document
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md rounded-2xl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <UploadCloud className="w-5 h-5 text-green-600" />
+                  Upload Company Document
+                </DialogTitle>
+                <DialogDescription>Upload a new RFP document for processing.</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleUploadDocument} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="document">Select Document</Label>
+                  <Input
+                    id="document"
+                    type="file"
+                    onChange={handleFileChange}
+                    required
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    type="submit"
+                    disabled={loading || !newDocument}
+                    className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 rounded-xl"
+                  >
+                    {loading ? "Uploading..." : "Upload Document"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowUploadDocumentDialog(false);
+                      setNewDocument(null); // Clear selected file on cancel
+                    }}
                     className="flex-1 rounded-xl"
                   >
                     Cancel
@@ -698,7 +846,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                       <Card key={rfp.id} className="flex items-center justify-between p-4 rounded-xl shadow-sm border border-gray-200">
                         <div>
                           <p className="font-medium text-gray-900">{rfp.filename}</p>
-                          <p className="text-sm text-gray-500">Uploaded by: {rfp.uploaded_by_name}</p>
+                          <p className="text-sm text-gray-500">Uploaded by: {usernames[rfp.uploaded_by] || rfp.uploaded_by}</p>
                         </div>
                         <Button
                           size="sm"
@@ -774,7 +922,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                               {rfp.status.replace(/_/g, " ")}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-gray-700">{rfp.uploaded_by_name}</TableCell>
+                          <TableCell className="text-gray-700">{usernames[rfp.uploaded_by] || rfp.uploaded_by}</TableCell>
                           <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
                           <TableCell className="text-gray-700">
                               {rfp.assigned_to_worker_name || "N/A"} {/* Display assigned worker */}
@@ -794,9 +942,9 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                               variant="outline"
                               size="sm"
                               className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg"
-                              onClick={() => handleDownloadRFP(rfp.id, rfp.filename)} // Call the new download function
+                              onClick={() => window.open(rfp.file_url, "_blank")}
                             >
-                              <Download className="h-4 w-4 mr-1" /> Download
+                              <Download className="h-4 w-4 mr-1" /> View
                             </Button>
                           </TableCell>
                         </TableRow>

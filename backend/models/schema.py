@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr
 from enum import Enum
 from sqlalchemy.dialects.postgresql import JSONB  # Only if you're using PostgreSQL
 from pgvector.sqlalchemy import Vector
+from sqlalchemy.ext.mutable import MutableList
 
 
 
@@ -41,7 +42,7 @@ class Company(Base):
     # admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
     # employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
     # rfps = relationship("RFP", back_populates="company")
-    userid = Column(Integer, ForeignKey("users.id"))
+    # userid = Column(Integer, ForeignKey("users.id"))
     # # Relationships
     # admin = relationship("User", back_populates="company", foreign_keys="User.company_id")
     # employees = relationship("User", back_populates="company", foreign_keys="User.company_id")
@@ -67,15 +68,17 @@ class RFP(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, index=True)
+    # description = Column(Text)
+    # file_path = Column(String)
     content_type = Column(String)
     status = Column(String, default="pending")
     uploaded_by = Column(Integer, ForeignKey("users.id"))
     company_id = Column(Integer, ForeignKey("companies.id"))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    # file_data = Column(LargeBinary)
-    file_url = Column(String, nullable=False)
-    docx_url = Column(String, nullable=False)
-    pdf_url = Column(String, nullable=False)
+    # response_content = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+    file_url = Column(String)
+    docx_url = Column(String)
+    pdf_url = Column(String)
 
 
 class Employee(Base):
@@ -84,11 +87,13 @@ class Employee(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    role = Column(String, default="employee")
+    hashed_password = Column(String)    
     company_id = Column(Integer, ForeignKey("companies.id"))
-    rfps_assigned = Column(JSONB, default=list)
-    created_at = Column(DateTime, default = datetime.utcnow)
+    rfps_assigned = Column(MutableList.as_mutable(JSON), default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    role = Column(String ,default="employee")
+    # Relationships
+    # company = relationship("Company", back_populates="employees")
 
 # Pydantic Models
 class UserCreate(BaseModel):
@@ -98,7 +103,7 @@ class UserCreate(BaseModel):
     role: UserRole
 
 class EmployeeCreate(BaseModel):
-    name: str
+    username: str
     email: EmailStr
     password: str
     company_id: int
@@ -148,6 +153,5 @@ class EmployeeResponse(BaseModel):
     id: int
     name: str
     email: str
-    role: UserRole
     company_id: Optional[int] = None
     created_at: datetime

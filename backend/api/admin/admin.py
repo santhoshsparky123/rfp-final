@@ -10,6 +10,8 @@ from pydantic import BaseModel, RootModel
 from typing import Dict, List
 from sqlalchemy.exc import SQLAlchemyError
 from methods.functions import extract_text_from_docx,extract_text_from_excel,extract_text_from_pdf_bytes
+import datetime 
+import json
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form
@@ -22,7 +24,6 @@ from langchain_core.documents import Document
 load_dotenv()
 router = APIRouter(prefix="/api",tags=["Admin"])
 
-# Admin endpoints
 @router.post("/admin/create-employee")
 async def create_employee(
     employee_data: EmployeeCreate,
@@ -30,20 +31,20 @@ async def create_employee(
     db: Session = Depends(get_db)
 ):
     hashed_password = get_password_hash(employee_data.password)
-    employee = Employee(
-        name=employee_data.name,
+    
+    employee_entry = Employee(
+        name=employee_data.username,
         email=employee_data.email,
         hashed_password=hashed_password,
-        role=UserRole.EMPLOYEE,
         company_id=employee_data.company_id,  # Assuming current_user has company_id
-
-        created_at=datetime.now()
-        company_id=employee_data.company_id,
+        created_at=datetime.datetime.utcnow()
     )
     db.add(employee_entry)
     db.commit()
     db.refresh(employee_entry)
     return {"message": "Employee created successfully", "employee_db_id": employee_entry.id}
+
+
 
 @router.delete("/admin/remove-employee/{employee_id}")
 async def remove_employee(
@@ -51,19 +52,25 @@ async def remove_employee(
     # current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: Session = Depends(get_db)
 ):
-    employee = db.query(Employee).filter(
-        Employee.id == employee_id
-    employee = db.query(Employee).filter(
-        Employee.id == employee_id
-    ).first()
-
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
 
+    # Set all assigned RFPs to pending and remove from employee
+    if employee.rfps_assigned:
+        for rfp_id in list(employee.rfps_assigned):
+            rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+            if rfp:
+                rfp.status = "pending"
+                db.add(rfp)
+        employee.rfps_assigned = []
+        db.add(employee)
+        db.commit()
+        db.refresh(employee)
+
     db.delete(employee)
     db.commit()
-
-    return {"message": "Employee removed successfully"}
+    return {"message": "Employee removed successfully and all assigned RFPs set to pending."}
 
 
 @router.get("/all-employee/{company_id}")
@@ -71,14 +78,14 @@ async def allEmployee(
     company_id:int,
     db:Session = Depends(get_db)
 ):
-    employees = db.query(Employee).filter(Employee.company_id==company_id).all() # Added .all() to fetch all results
+    employees = db.query(Employee).filter(Employee.company_id==company_id).all()
     return {"employees": [
         {
             "id": r.id,
             "name": r.name,
-            "email": r.email, # Added email for display
-            "rfps_assigned": json.loads(r.rfps_assigned) if r.rfps_assigned else [], # Parse JSON string
-            "created_at": r.created_at.isoformat() if r.created_at else None # Add created_at
+            "email": r.email,
+            "rfps_assigned": r.rfps_assigned if r.rfps_assigned else [],
+            "created_at": r.created_at.isoformat() if r.created_at else None
         } for r in employees
     ]}
 
@@ -87,10 +94,10 @@ async def get_company_id(
     user_id: int,
     db: Session = Depends(get_db)
 ):
-    company = db.query(Company).filter(Company.userid == userid).first()
-    return {
-        "company_id":company.id
-    }
+    company = db.query(Company).filter(Company.userid == user_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return {"company_id": company.id}
     
 @router.get("/get_rfps/{companyid}")
 async def getrfps(
@@ -119,66 +126,92 @@ async def getrfp(
     rfpfile = db.query(RFP).filter(RFP.id == rfpid).first()
     if not rfpfile or not rfpfile.file_data:
         raise HTTPException(status_code=404, detail="RFP file not found")
-    return {
-        "filename":rfpfile.filename,
-        "content-type":rfpfile.content_type,
-        "uploaded_by":rfpfile.uploaded_by,
-        "created_at":rfpfile.created_at,
-        "file_url":rfpfile.file_url
-    }
+    return StreamingResponse(
+        iter([rfpfile.file_data]),
+        media_type=rfpfile.content_type,
+        headers={"Content-Disposition": f"attachment; filename={rfpfile.filename}"}
+    )
 
-@router.get("/rfp-status/{company_id}")
-async def rfpStatus(
-    company_id: int,
+@router.post("/admin/assign-rfp-to-employee/{employee_id}/{rfp_id}")
+async def assign_rfp_to_employee(
+    employee_id: int,
+    rfp_id: int,
     db: Session = Depends(get_db)
 ):
-    rfpfile = db.query(RFP).filter(RFP.company_id==company_id and RFP.status=="pending").all()
-    return {"rfps": [
-        {
-            "id": r.id,
-            "filename": r.filename,
-            "content_type": r.content_type,
-            "uploaded_by": r.uploaded_by,
-            "file_url":r.file_url
-        } for r in rfpfile
-    ]}
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
 
-# Sample Pydantic model
-class Assigned(BaseModel):
-    company_id: int
-    assignments: Dict[str, List[int]]
+    rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+    if not rfp:
+        raise HTTPException(status_code=404, detail="RFP not found")
 
-@router.post("/rfp-assigned")
-async def rfp_status(
-    temp: Assigned,
-    db: Session = Depends(get_db)
-):
-    try:
-        for emp_id, rfps in temp.assignments.items():
-            emp_id = int(emp_id)
-            employee = db.query(Employee).filter(Employee.id == emp_id).first()
-            if not employee:
-                continue  # or handle error
+    # Ensure rfps_assigned is always a list
+    current_assigned_rfps = employee.rfps_assigned if employee.rfps_assigned else []
 
-    current_assigned_rfps = json.loads(employee.rfps_assigned) if employee.rfps_assigned else []
-
-            # Add new RFP IDs to the existing list, avoiding duplicates
-            for rfpid in rfps:
-                if rfpid not in employee.rfps_assigned:
-                    rfp = db.query(RFP).filter(RFP.id==rfpid).first()
-                    rfp.status = "Assigned"
-                    employee.rfps_assigned.append(rfpid)
-
+    if rfp_id not in current_assigned_rfps:
+        current_assigned_rfps.append(rfp_id)
+        employee.rfps_assigned = current_assigned_rfps  # assign as list, not string
+        rfp.status = "assigned"
+        db.add(employee)
+        db.add(rfp)
         db.commit()
+        db.refresh(employee)
+        db.refresh(rfp)
+        return {"message": f"RFP {rfp_id} assigned to employee {employee_id} successfully."}
+    else:
+        raise HTTPException(status_code=409, detail=f"RFP {rfp_id} already assigned to employee {employee_id}.")
 
-        return {
-            "rfp2-employees": temp.assignments,
-            "status": "Assigned"
-        }
-    except SQLAlchemyError as e:
-        db.rollback()
-        return {"error": str(e)}
+@router.post("/admin/unassign-rfp/{employee_id}/{rfp_id}")
+async def unassign_rfp_from_employee(
+    employee_id: int,
+    rfp_id: int,
+    db: Session = Depends(get_db)
+):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
 
+    current_assigned_rfps = employee.rfps_assigned if employee.rfps_assigned else []
+
+    if rfp_id in current_assigned_rfps:
+        current_assigned_rfps.remove(rfp_id)
+        employee.rfps_assigned = current_assigned_rfps
+        db.add(employee)
+        db.commit()
+        db.refresh(employee)
+
+        rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+        if rfp:
+            rfp.status = "pending"
+            db.add(rfp)
+            db.commit()
+            db.refresh(rfp)
+            db.refresh(employee)
+
+        return {"message": f"RFP {rfp_id} unassigned from employee {employee_id} and set to pending."}
+    else:
+        raise HTTPException(status_code=404, detail=f"RFP {rfp_id} not assigned to employee {employee_id}.")
+
+
+@router.delete("/admin/remove-rfp/{rfp_id}")
+async def remove_rfp(
+    rfp_id: int,
+    db: Session = Depends(get_db)
+):
+    rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+    if not rfp:
+        raise HTTPException(status_code=404, detail="RFP not found")
+
+    # Remove this RFP from all employees' rfps_assigned lists
+    employees = db.query(Employee).all()
+    for employee in employees:
+        if employee.rfps_assigned and rfp_id in employee.rfps_assigned:
+            employee.rfps_assigned = [rid for rid in employee.rfps_assigned if rid != rfp_id]
+            db.add(employee)
+    db.delete(rfp)
+    db.commit()
+    return {"message": f"RFP {rfp_id} deleted and unassigned from all employees."}
 
 load_dotenv()
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")

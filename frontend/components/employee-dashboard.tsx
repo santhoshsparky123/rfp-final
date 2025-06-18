@@ -1,3 +1,4 @@
+// employee-dashboard.tsx
 "use client"
 
 import { useState, useEffect, useCallback, use } from "react"
@@ -28,6 +29,7 @@ import ProposalEditor from "@/components/proposal-editor"
 import FinalProposal from "@/components/final-proposal"
 import { Alert, AlertDescription } from "@/components/ui/alert" // Added for Alert component
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useRouter } from "next/navigation"
 
 interface EmployeeDashboardProps {
   user: {
@@ -73,6 +75,7 @@ interface RFP { // Re-defining RFP interface for clarity in employee dashboard
   content_type: string
   status: "pending" | "in_progress" | "completed" | "assigned"
   created_at: string
+  file_url: string // Add file_url
 }
 
 
@@ -89,10 +92,17 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pendingRfpId, setPendingRfpId] = useState<number | null>(null);
+  const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
+  const [selectedFileUrl, setSelectedFileUrl] = useState<string | null>(null);
+
+  const router = useRouter();
 
   const sidebarItems = [
     { id: "dashboard", label: "Dashboard", icon: Home },
-    { id: "upload", label: "Upload RFP", icon: Upload },
+    // Removed "Upload RFP" from here
     { id: "docs", label: "Company Docs", icon: FileText },
     { id: "generate", label: "Generate Response", icon: Brain },
     { id: "edit", label: "Review & Edit", icon: Edit },
@@ -105,6 +115,9 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const handleRFPUpload = (data: RFPData) => {
     setRFPData(data)
     setActiveSection("generate")
+    // Clear selected file info after successful upload/processing
+    setSelectedFilename(null);
+    setSelectedFileUrl(null);
   }
 
   const handleCompanyDocsUpload = (status: CompanyDocsStatus) => {
@@ -164,6 +177,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
           content_type: rfp.content_type,
           status: rfp.status,
           created_at: rfp.created_at ? new Date(rfp.created_at).toLocaleDateString() : "N/A",
+          file_url: rfp.file_url, // Map file_url
         })),
       )
     } catch (err: any) {
@@ -252,6 +266,39 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   };
 
+  // Modified View button logic
+  const handleViewRFP = async (rfpId: number, fileUrl: string, filename?: string) => {
+    try {
+      // Fetch company_id and rfp_id using filename and file_url
+      let rfpIdToUse = rfpId;
+      let companyIdToUse: number | null = null;
+      if (filename && fileUrl) {
+        const res = await fetch(`http://localhost:8000/api/upload-rfp/`);
+        if (res.ok) {
+          const data = await res.json();
+          rfpIdToUse = data.rfp_id;
+          companyIdToUse = data.company_id;
+          console.log(rfpIdToUse)
+          console.log(companyIdToUse)
+        }
+      }
+      // Set current rfp_id in backend
+      await fetch(`http://localhost:8000/api/set_current_rfp/${user.id}?rfp_id=${rfpIdToUse}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      setPdfUrl(fileUrl);
+      setPendingRfpId(rfpIdToUse);
+      setSelectedFilename(filename || null);
+      setSelectedFileUrl(fileUrl || null);
+      setPdfModalOpen(true);
+    } catch (err) {
+      alert("Failed to set current RFP. Please try again.");
+    }
+  };
 
   const renderContent = () => {
     switch (activeSection) {
@@ -276,8 +323,9 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                     <Upload className="w-12 h-12 text-blue-600 mx-auto mb-4" />
                     <h3 className="font-semibold text-gray-900 mb-2">Upload RFP</h3>
                     <p className="text-sm text-gray-600 mb-4">Start by uploading your RFP document</p>
-                    <Button onClick={() => setActiveSection("upload")} className="w-full bg-blue-600 hover:bg-blue-700">
-                      Get Started
+                    {/* This button could navigate to "my-rfps" or handle a manual upload if desired */}
+                    <Button onClick={() => setActiveSection("my-rfps")} className="w-full bg-blue-600 hover:bg-blue-700">
+                      View My RFPs
                     </Button>
                   </CardContent>
                 </Card>
@@ -374,8 +422,21 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
           </div>
         )
 
+      // The "upload" section will now implicitly be used when "Process" is clicked from My RFPs
       case "upload":
-        return <RFPUpload onUploadSuccess={handleRFPUpload} />
+        return (
+          <RFPUpload
+            onUploadSuccess={handleRFPUpload}
+            userContext={{
+              userId: typeof user.id === "number" ? user.id : parseInt(user.id, 10),
+              companyId: 1, // Replace with actual companyId if available
+              employeeId: typeof user.id === "number" ? user.id : parseInt(user.id, 10),
+              authToken: token,
+              filename: selectedFilename || undefined,
+              fileUrl: selectedFileUrl || undefined,
+            }}
+          />
+        )
 
       case "docs":
         return <CompanyDocsUpload onUploadSuccess={handleCompanyDocsUpload} existingDocsStatus={companyDocsStatus} />
@@ -436,48 +497,60 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                         </TableCell>
                       </TableRow>
                     ) : (
-                      assignedRfps.map((rfp) => (
-                        <TableRow key={rfp.id} className="hover:bg-gray-50">
-                          <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={rfp.status === "completed" ? "default" : "outline"}
-                              className={`rounded-xl ${
-                                rfp.status === "pending"
-                                  ? "bg-yellow-100 text-yellow-700"
-                                  : rfp.status === "in_progress"
-                                    ? "bg-blue-100 text-blue-700"
-                                    : rfp.status === "assigned"
-                                      ? "bg-purple-100 text-purple-700"
-                                      : "bg-green-100 text-green-700"
-                              }`}
-                            >
-                              {rfp.status.replace(/_/g, " ")}
-                            </Badge>
-                          </TableCell>
-                          {/*<TableCell className="text-gray-700">{rfp.uploaded_by_name}</TableCell> {/* Assuming assigned_by_name means the uploader */}
-                          <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg mr-2" // Added margin-right
-                              onClick={() => handleDownloadRFP(rfp.id, rfp.filename)}
-                            >
-                              <Download className="h-4 w-4 mr-1" /> Download
-                            </Button>
-                            <Button
-                              variant="default" // You can choose a different variant
-                              size="sm"
-                              className="bg-green-600 hover:bg-green-700 text-white rounded-lg"
-                              onClick={() => handleMarkAsCompleted(rfp.id)}
-                              disabled={rfp.status === "completed"} // Disable if already completed
-                            >
-                              <CheckCircle className="h-4 w-4 mr-1" /> {rfp.status === "completed" ? "Completed" : "Mark as Completed"}
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                    assignedRfps.map((rfp) => (
+                      <TableRow key={rfp.id} className="hover:bg-gray-50">
+                        <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={rfp.status === "completed" ? "default" : "outline"}
+                            className={`rounded-xl ${
+                              rfp.status === "pending"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : rfp.status === "in_progress"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : rfp.status === "assigned"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : "bg-green-100 text-green-700"
+                            }`}
+                          >
+                            {rfp.status.replace(/_/g, " ")}
+                          </Badge>
+                        </TableCell>
+                        {/*<TableCell className="text-gray-700">{rfp.uploaded_by_name}</TableCell>*/}
+                        <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg mr-2"
+                            onClick={() => handleViewRFP(rfp.id, rfp.file_url, rfp.filename)}
+                          >
+                            <Download className="h-4 w-4 mr-1" /> view
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg mr-2"
+                            onClick={() => {
+                              setSelectedFilename(rfp.filename);
+                              // setSelectedFileUrl(rfp.file_url);
+                              setActiveSection("upload"); // Set active section to "upload" to trigger processing
+                            }}
+                          >
+                            <Upload className="h-4 w-4 mr-1" /> Process
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                            onClick={() => handleMarkAsCompleted(rfp.id)}
+                            disabled={rfp.status === "completed"}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-1" /> {rfp.status === "completed" ? "Completed" : "Mark as Completed"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
                     )}
                   </TableBody>
                 </Table>
@@ -603,7 +676,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 </h1>
                 <p className="text-sm text-gray-500">
                   {activeSection === "dashboard" && "Overview of your RFP processing workflow"}
-                  {activeSection === "upload" && "Upload and process new RFP documents"}
+                  {/* Removed description for "upload" since it's now internal */}
                   {activeSection === "docs" && "Manage company documentation"}
                   {activeSection === "generate" && "Generate AI-powered responses"}
                   {activeSection === "edit" && "Review and edit generated responses"}
@@ -644,6 +717,39 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
       {/* Overlay for mobile */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* PDF Modal */}
+      {pdfModalOpen && pdfUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-lg max-w-3xl w-full p-6 relative">
+            <button
+              className="absolute top-2 right-2 text-gray-500 hover:text-red-600"
+              onClick={() => setPdfModalOpen(false)}
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <h2 className="text-xl font-bold mb-4">RFP Document Preview</h2>
+            <div className="mb-4" style={{ height: "60vh" }}>
+              <iframe
+                src={pdfUrl}
+                title="RFP PDF Preview"
+                width="100%"
+                height="100%"
+                style={{ border: "none" }}
+              />
+            </div>
+            <Button
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+              onClick={() => {
+                setPdfModalOpen(false);
+                setActiveSection("upload");
+              }}
+            >
+              Process / Upload Response
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )

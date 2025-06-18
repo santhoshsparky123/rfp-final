@@ -33,8 +33,5 @@ pycryptodome
 sqlalchemy
 pgvector
 sentence-transformers
-<<<<<<< HEAD
 boto3
 python-multipart
-=======
->>>>>>> b9b0be69f9c63cefa9488cd5c9ce54f1df862f11

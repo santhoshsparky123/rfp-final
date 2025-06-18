@@ -1,80 +1,79 @@
-# from fastapi import FastAPI, HTTPException
-# import uuid
-# import shutil
-# import os
-# from fastapi import UploadFile, File
-# from agents.extract_rfp_structure import extract_rfp_structure
-# from pydantic_models.datatypes import RFP_STORE
-# from fastapi import APIRouter
+from fastapi import FastAPI, HTTPException, Form
+import uuid
+import shutil
+import os
+from fastapi import UploadFile, File
+from agents.extract_rfp_structure import extract_rfp_structure
+from pydantic_models.datatypes import RFP_STORE
+from fastapi import APIRouter
+import tempfile
+import requests
+from pydantic import BaseModel
+from methods.functions import Session,Depends,get_db,require_role1
+
+from models.schema import RFP,User,UserRole,Employee
 
 router = APIRouter(prefix="/api", tags=["RFP"])
-# API Endpoints
-# @router.post("/upload-rfp/", response_model=dict)
-# async def upload_rfp(file: UploadFile = File(...)):
-#     """Upload and process an RFP document"""
-#     print("hello1")
-#     # Generate unique ID for this RFP
-#     rfp_id = str(uuid.uuid4())
-    
-#     # Save the uploaded file
-#     file_extension = os.path.splitext(file.filename)[1]
-#     file_path = f"uploads/rfp_{rfp_id}{file_extension}"
-    
-#     with open(file_path, "wb") as buffer:
-#         shutil.copyfileobj(file.file, buffer)
-    
-#     try:
-#         # Extract structured data from RFP
-#         structured_data = extract_rfp_structure(file_path)
-        
-#         # Store the processed RFP
-#         RFP_STORE[rfp_id] = {
-#             "file_path": file_path,
-#             "structured_data": structured_data,
-#             "company_docs": [],
-#             "responses": {}
-#         }
-#         print(RFP_STORE)
-#         return {
-#             "rfp_id": rfp_id,
-#             "message": "RFP uploaded and processed successfully",
-#             "structured_data": structured_data
-#         }
-#     except Exception as e:
-#         # Clean up on error
-#         if os.path.exists(file_path):
-#             os.remove(file_path)
-#         raise HTTPException(status_code=500, detail=f"Error processing RFP: {str(e)}")
 
+class temp(BaseModel):
+    file_name:str
+    
 @router.post("/upload-rfp/", response_model=dict)
-async def upload_rfp(file: UploadFile = File(...)):
-    print(f"Received file: {file.filename if file else 'No file'}")
-    rfp_id = str(uuid.uuid4())
-
-    # Ensure uploads directory exists
-    os.makedirs("uploads", exist_ok=True)
-
-    file_extension = os.path.splitext(file.filename)[1]
-    file_path = f"uploads/rfp_{rfp_id}{file_extension}"
-
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
+async def upload_rfp(
+    file_name: str = Form(...),
+    current_user: Employee = Depends(require_role1([UserRole.EMPLOYEE])),
+    db: Session = Depends(get_db)
+):
+    rfp = db.query(RFP).filter(RFP.filename==file_name).first()
+    file_url = rfp.file_url
+    rfp_id = rfp.id
+    company_id = rfp.company_id
+    
     try:
+        if file_url:
+            # Download from S3 or HTTP(S) URL
+            response = requests.get(file_url, stream=True)
+            if response.status_code != 200:
+                raise HTTPException(status_code=400, detail="Failed to download file from URL")
+            file_extension = os.path.splitext(file_url)[1] or ".tmp"
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
+            for chunk in response.iter_content(chunk_size=8192):
+                temp_file.write(chunk)
+            temp_file.close()
+            file_path = temp_file.name
+        # elif file:
+        #     file_extension = os.path.splitext(file.filename)[1]
+        #     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
+        #     shutil.copyfileobj(file.file, temp_file)
+        #     temp_file.close()
+        #     file_path = temp_file.name
+        #     print("santhosh2")
+        else:
+            raise HTTPException(status_code=400, detail="No file or file_url provided")
+
+        print("santhosh3")
+        
         structured_data = extract_rfp_structure(file_path)
-        # RFP_STORE[rfp_id] = {
-        #     "file_path": file_path,
-        #     "structured_data": structured_data,
-        #     "company_docs": [],
-        #     "responses": {}
-        # }
-        # print(RFP_STORE)
+        
+        
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        
+        structured_data["company_id"] = company_id
+        structured_data["employee_id"] = current_user.id
+        structured_data["rfp_id"] = rfp_id
+        print(structured_data)
         return {
-            "rfp_id": rfp_id,
             "message": "RFP uploaded and processed successfully",
             "structured_data": structured_data
         }
     except Exception as e:
-        if os.path.exists(file_path):
+        if file_path and os.path.exists(file_path):
             os.remove(file_path)
         raise HTTPException(status_code=500, detail=f"Error processing RFP: {str(e)}")
+    finally:
+        if temp_file:
+            try:
+                os.remove(temp_file.name)
+            except Exception:
+                pass
