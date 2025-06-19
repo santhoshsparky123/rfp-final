@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 from methods.functions import Depends,require_role,get_db,Session
 from models.schema import User,UserRole,RFP,Employee,Company
+import marko
 
 # Optional: for converting Word to PDF
 from docx2pdf import convert  # You can replace this with another converter if needed
@@ -47,7 +48,7 @@ def final_rfp(rfp_data: dict,
         """
     )
 
-    final_proposal_markdown = prompt.text  # or .content if that's the correct attribute
+    final_proposal_markdown = marko.convert(prompt.text)  # or .content if that's the correct attribute
     subdomain = db.query(Company).filter(Company.id==company_id).first()
     # Generate Word and PDF documents from proposal
     file_paths = generate_and_upload_proposal(company_id, {

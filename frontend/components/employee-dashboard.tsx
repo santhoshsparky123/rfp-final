@@ -33,14 +33,14 @@ import { useRouter } from "next/navigation"
 
 interface EmployeeDashboardProps {
   user: {
-    id: string
-    email: string
-    role: "employee"
-    name: string
-    company?: string
+    id: string; // Ensure ID is always a string
+    email: string;
+    role: "employee";
+    name: string;
+    company?: string;
   }
   onLogout: () => void
-  token: string // Assuming token is passed from parent for API calls
+  token: string | null; // Consistent type: string or null
 }
 
 interface RFPData {
@@ -80,6 +80,9 @@ interface RFP { // Re-defining RFP interface for clarity in employee dashboard
 
 
 export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDashboardProps) {
+  // Log the token prop received by this component
+  console.log('EmployeeDashboard received token:', token);
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeSection, setActiveSection] = useState("dashboard")
   const [rfpData, setRFPData] = useState<RFPData | null>(null)
@@ -96,28 +99,26 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pendingRfpId, setPendingRfpId] = useState<number | null>(null);
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
-  const [selectedFileUrl, setSelectedFileUrl] = useState<string | null>(null);
+  const [selectedFileUrlForPreview, setSelectedFileUrlForPreview] = useState<string | null>(null);
+
 
   const router = useRouter();
 
   const sidebarItems = [
     { id: "dashboard", label: "Dashboard", icon: Home },
-    // Removed "Upload RFP" from here
     { id: "docs", label: "Company Docs", icon: FileText },
     { id: "generate", label: "Generate Response", icon: Brain },
     { id: "edit", label: "Review & Edit", icon: Edit },
     { id: "final", label: "Final Proposal", icon: Download },
-    { id: "my-rfps", label: "My RFPs", icon: FileText }, // New item for assigned RFPs
+    { id: "my-rfps", label: "My RFPs", icon: FileText },
     { id: "history", label: "History", icon: History },
-    // Removed "Settings"
   ]
 
   const handleRFPUpload = (data: RFPData) => {
     setRFPData(data)
     setActiveSection("generate")
-    // Clear selected file info after successful upload/processing
     setSelectedFilename(null);
-    setSelectedFileUrl(null);
+    setSelectedFileUrlForPreview(null);
   }
 
   const handleCompanyDocsUpload = (status: CompanyDocsStatus) => {
@@ -139,15 +140,24 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   }
 
   useEffect(() => {
-    fetchAssignedRfps()
-  }, [user.id, token]) // Fetch assigned RFPs when user ID or token changes
+    // Only fetch assigned RFPs if token is present and not null
+    if (token) {
+      fetchAssignedRfps()
+    } else {
+      setError("Authentication token is missing. Please log in to view assigned RFPs.");
+      setAssignedRfps([]); // Clear assigned RFPs if no token
+    }
+  }, [user.id, token]) // Depend on user.id and token
 
-  // Function to fetch assigned RFPs for the employee
+
   const fetchAssignedRfps = async () => {
     setLoading(true)
     setError(null)
     try {
-      // Assuming a new API endpoint for fetching RFPs assigned to a specific employee
+      if (!token) {
+        throw new Error("Authentication token is missing. Cannot fetch assigned RFPs.");
+      }
+
       const response = await fetch(`http://localhost:8000/api/employee/get_assigned_rfps/${user.id}`, {
         headers: {
           "Content-Type": "application/json",
@@ -161,7 +171,6 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
 
       const rawData = await response.json()
 
-      // Accepts either {rfps: [...]} or just an array
       let fetchedRfps: any[] = [];
       if (Array.isArray(rawData)) {
         fetchedRfps = rawData;
@@ -177,7 +186,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
           content_type: rfp.content_type,
           status: rfp.status,
           created_at: rfp.created_at ? new Date(rfp.created_at).toLocaleDateString() : "N/A",
-          file_url: rfp.file_url, // Map file_url
+          file_url: rfp.file_url,
         })),
       )
     } catch (err: any) {
@@ -188,18 +197,15 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   }
 
-  // useEffect(() => {
-  //   if (activeSection === "my-rfps") {
-  //     fetchAssignedRfps()
-  //   }
-  // }, [activeSection])
-
   const handleDownloadRFP = async (rfpId: number, filename: string) => {
     setLoading(true)
     setError(null)
     setSuccess(null)
 
     try {
+      if (!token) {
+        throw new Error("Authentication token is missing. Cannot download RFP.");
+      }
       const response = await fetch(`http://localhost:8000/api/download_rfp/${rfpId}`, {
         method: "GET",
         headers: {
@@ -230,20 +236,22 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   };
 
-  // New function to handle marking an RFP as completed
   const handleMarkAsCompleted = async (rfpId: number) => {
     setLoading(true)
     setError(null)
     setSuccess(null)
 
     try {
+      if (!token) {
+        throw new Error("Authentication token is missing. Cannot mark RFP as completed.");
+      }
       const response = await fetch(`http://localhost:8000/api/rfp/${rfpId}/complete`, {
-        method: "PUT", // Or PATCH, depending on your backend
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: "completed" }), // Send the new status
+        body: JSON.stringify({ status: "completed" }),
       })
 
       if (!response.ok) {
@@ -251,7 +259,6 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
       }
 
-      // Update the status of the specific RFP in the local state
       setAssignedRfps(prevRfps =>
         prevRfps.map(rfp =>
           rfp.id === rfpId ? { ...rfp, status: "completed" } : rfp
@@ -266,24 +273,12 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   };
 
-  // Modified View button logic
   const handleViewRFP = async (rfpId: number, fileUrl: string, filename?: string) => {
     try {
-      // Fetch company_id and rfp_id using filename and file_url
-      let rfpIdToUse = rfpId;
-      let companyIdToUse: number | null = null;
-      if (filename && fileUrl) {
-        const res = await fetch(`http://localhost:8000/api/upload-rfp/`);
-        if (res.ok) {
-          const data = await res.json();
-          rfpIdToUse = data.rfp_id;
-          companyIdToUse = data.company_id;
-          console.log(rfpIdToUse)
-          console.log(companyIdToUse)
-        }
+      if (!token) {
+        throw new Error("Authentication token is missing. Cannot set current RFP.");
       }
-      // Set current rfp_id in backend
-      await fetch(`http://localhost:8000/api/set_current_rfp/${user.id}?rfp_id=${rfpIdToUse}`, {
+      await fetch(`http://localhost:8000/api/set_current_rfp/${user.id}?rfp_id=${rfpId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -291,9 +286,9 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
         },
       });
       setPdfUrl(fileUrl);
-      setPendingRfpId(rfpIdToUse);
+      setPendingRfpId(rfpId);
       setSelectedFilename(filename || null);
-      setSelectedFileUrl(fileUrl || null);
+      setSelectedFileUrlForPreview(fileUrl || null);
       setPdfModalOpen(true);
     } catch (err) {
       alert("Failed to set current RFP. Please try again.");
@@ -301,287 +296,292 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   };
 
   const renderContent = () => {
-    switch (activeSection) {
-      case "dashboard":
-        return (
-          <div className="space-y-8">
-            {/* Welcome Section */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-8 border border-blue-100">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="p-3 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-lg">
-                  <User className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user.name}!</h1>
-                  <p className="text-gray-600 mt-1">Ready to process some RFPs today?</p>
-                </div>
-              </div>
+    return (
+      <div className="space-y-8">
+        {(!token) && ( // Show alert if token is missing (can be null or undefined)
+          <Alert variant="destructive" className="mb-4 rounded-xl">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Authentication token is missing. Please ensure you are logged in correctly.
+              Functionality requiring authentication might not work.
+            </AlertDescription>
+          </Alert>
+        )}
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300">
-                  <CardContent className="p-6 text-center">
-                    <Upload className="w-12 h-12 text-blue-600 mx-auto mb-4" />
-                    <h3 className="font-semibold text-gray-900 mb-2">Upload RFP</h3>
-                    <p className="text-sm text-gray-600 mb-4">Start by uploading your RFP document</p>
-                    {/* This button could navigate to "my-rfps" or handle a manual upload if desired */}
-                    <Button onClick={() => setActiveSection("my-rfps")} className="w-full bg-blue-600 hover:bg-blue-700">
-                      View My RFPs
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300">
-                  <CardContent className="p-6 text-center">
-                    <Brain className="w-12 h-12 text-green-600 mx-auto mb-4" />
-                    <h3 className="font-semibold text-gray-900 mb-2">AI Processing</h3>
-                    <p className="text-sm text-gray-600 mb-4">Let AI generate comprehensive responses</p>
-                    <Button
-                      onClick={() => setActiveSection("generate")}
-                      disabled={!rfpData}
-                      className="w-full bg-green-600 hover:bg-green-700"
-                    >
-                      Generate
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300">
-                  <CardContent className="p-6 text-center">
-                    <Edit className="w-12 h-12 text-orange-600 mx-auto mb-4" />
-                    <h3 className="font-semibold text-gray-900 mb-2">Review & Edit</h3>
-                    <p className="text-sm text-gray-600 mb-4">Fine-tune the generated responses</p>
-                    <Button
-                      onClick={() => setActiveSection("edit")}
-                      disabled={!generatedResponse}
-                      className="w-full bg-orange-600 hover:bg-orange-700"
-                    >
-                      Review
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-
-            {/* Progress Overview */}
-            <Card className="border-0 shadow-lg">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-blue-600" />
-                  Current Progress
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {[
-                    { step: "Upload RFP", completed: !!rfpData, icon: Upload },
-                    { step: "Generate Response", completed: !!generatedResponse, icon: Brain },
-                    { step: "Review & Edit", completed: !!editedResponse, icon: Edit },
-                    { step: "Final Proposal", completed: finalProposalGenerated, icon: Download },
-                  ].map((item, index) => {
-                    const Icon = item.icon
-                    return (
-                      <div key={item.step} className="flex items-center gap-4 p-3 rounded-lg bg-gray-50">
-                        <div className={`p-2 rounded-lg ${item.completed ? "bg-green-100" : "bg-gray-200"}`}>
-                          <Icon className={`w-5 h-5 ${item.completed ? "text-green-600" : "text-gray-400"}`} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900">{item.step}</div>
-                        </div>
-                        {item.completed && <CheckCircle className="w-5 h-5 text-green-600" />}
+        {(() => {
+          switch (activeSection) {
+            case "dashboard":
+              return (
+                <>
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-8 border border-blue-100">
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="p-3 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-lg">
+                        <User className="w-8 h-8 text-white" />
                       </div>
-                    )
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                      <div>
+                        <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user.name}!</h1>
+                        <p className="text-gray-600 mt-1">Ready to process some RFPs today?</p>
+                      </div>
+                    </div>
 
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              {[
-                { title: "RFPs Processed", value: "12", icon: FileText, color: "blue" },
-                { title: "Responses Generated", value: "8", icon: Brain, color: "green" },
-                { title: "Reviews Completed", value: "6", icon: Edit, color: "orange" },
-                { title: "Final Proposals", value: "5", icon: Download, color: "purple" },
-              ].map((stat) => {
-                const Icon = stat.icon
-                return (
-                  <Card key={stat.title} className="border-0 shadow-md">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-                          <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                        </div>
-                        <Icon className={`w-8 h-8 text-${stat.color}-600`} />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300">
+                        <CardContent className="p-6 text-center">
+                          <Upload className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+                          <h3 className="font-semibold text-gray-900 mb-2">Upload RFP</h3>
+                          <p className="text-sm text-gray-600 mb-4">Start by uploading your RFP document</p>
+                          <Button onClick={() => setActiveSection("my-rfps")} className="w-full bg-blue-600 hover:bg-blue-700">
+                            View My RFPs
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300">
+                        <CardContent className="p-6 text-center">
+                          <Brain className="w-12 h-12 text-green-600 mx-auto mb-4" />
+                          <h3 className="font-semibold text-gray-900 mb-2">AI Processing</h3>
+                          <p className="text-sm text-gray-600 mb-4">Let AI generate comprehensive responses</p>
+                          <Button
+                            onClick={() => setActiveSection("generate")}
+                            disabled={!rfpData}
+                            className="w-full bg-green-600 hover:bg-green-700"
+                          >
+                            Generate
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300">
+                        <CardContent className="p-6 text-center">
+                          <Edit className="w-12 h-12 text-orange-600 mx-auto mb-4" />
+                          <h3 className="font-semibold text-gray-900 mb-2">Review & Edit</h3>
+                          <p className="text-sm text-gray-600 mb-4">Fine-tune the generated responses</p>
+                          <Button
+                            onClick={() => setActiveSection("edit")}
+                            disabled={!generatedResponse}
+                            className="w-full bg-orange-600 hover:bg-orange-700"
+                          >
+                            Review
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+
+                  <Card className="border-0 shadow-lg">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Zap className="w-5 h-5 text-blue-600" />
+                        Current Progress
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {[
+                          { step: "Upload RFP", completed: !!rfpData, icon: Upload },
+                          { step: "Generate Response", completed: !!generatedResponse, icon: Brain },
+                          { step: "Review & Edit", completed: !!editedResponse, icon: Edit },
+                          { step: "Final Proposal", completed: finalProposalGenerated, icon: Download },
+                        ].map((item, index) => {
+                          const Icon = item.icon
+                          return (
+                            <div key={item.step} className="flex items-center gap-4 p-3 rounded-lg bg-gray-50">
+                              <div className={`p-2 rounded-lg ${item.completed ? "bg-green-100" : "bg-gray-200"}`}>
+                                <Icon className={`w-5 h-5 ${item.completed ? "text-green-600" : "text-gray-400"}`} />
+                              </div>
+                              <div className="flex-1">
+                                <div className="font-medium text-gray-900">{item.step}</div>
+                              </div>
+                              {item.completed && <CheckCircle className="w-5 h-5 text-green-600" />}
+                            </div>
+                          )
+                        })}
                       </div>
                     </CardContent>
                   </Card>
-                )
-              })}
-            </div>
-          </div>
-        )
 
-      // The "upload" section will now implicitly be used when "Process" is clicked from My RFPs
-      case "upload":
-        return (
-          <RFPUpload
-            onUploadSuccess={handleRFPUpload}
-            userContext={{
-              userId: typeof user.id === "number" ? user.id : parseInt(user.id, 10),
-              companyId: 1, // Replace with actual companyId if available
-              employeeId: typeof user.id === "number" ? user.id : parseInt(user.id, 10),
-              authToken: token,
-              filename: selectedFilename || undefined,
-              fileUrl: selectedFileUrl || undefined,
-            }}
-          />
-        )
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    {[
+                      { title: "RFPs Processed", value: "12", icon: FileText, color: "blue" },
+                      { title: "Responses Generated", value: "8", icon: Brain, color: "green" },
+                      { title: "Reviews Completed", value: "6", icon: Edit, color: "orange" },
+                      { title: "Final Proposals", value: "5", icon: Download, color: "purple" },
+                    ].map((stat) => {
+                      const Icon = stat.icon
+                      return (
+                        <Card key={stat.title} className="border-0 shadow-md">
+                          <CardContent className="p-6">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600">{stat.title}</p>
+                                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                              </div>
+                              <Icon className={`w-8 h-8 text-${stat.color}-600`} />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                </>
+              )
 
-      case "docs":
-        return <CompanyDocsUpload onUploadSuccess={handleCompanyDocsUpload} existingDocsStatus={companyDocsStatus} />
+            case "upload":
+              return (
+                <RFPUpload
+                  onUploadSuccess={handleRFPUpload}
+                  userContext={{
+                    userId: parseInt(user.id, 10), // Ensure userId is number for RFPUpload's UserContext
+                    companyId: 1,
+                    employeeId: parseInt(user.id, 10), // Ensure employeeId is number
+                    authToken: token || undefined, // Explicitly pass token or undefined if null
+                    filename: selectedFilename || undefined,
+                  }}
+                />
+              )
 
-      case "generate":
-        return <ResponseGeneration rfpData={rfpData} onResponseGenerated={handleResponseGenerated} />
+            case "docs":
+              return <CompanyDocsUpload onUploadSuccess={handleCompanyDocsUpload} existingDocsStatus={companyDocsStatus} />
 
-      case "edit":
-        return <ProposalEditor generatedResponse={generatedResponse} onResponseEdited={handleResponseEdited} />
+            case "generate":
+              return <ResponseGeneration rfpData={rfpData} onResponseGenerated={handleResponseGenerated} />
 
-      case "final":
-        return <FinalProposal editedResponse={editedResponse} onProposalGenerated={handleFinalProposal} />
+            case "edit":
+              return <ProposalEditor generatedResponse={generatedResponse} onResponseEdited={handleResponseEdited} />
 
-      case "my-rfps": // New case for displaying assigned RFPs
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">My Assigned RFPs</h2>
-              <p className="text-gray-600">View and download RFPs assigned to you.</p>
-            </div>
+            case "final":
+              return <FinalProposal editedResponse={editedResponse} onProposalGenerated={handleFinalProposal} />
 
-            {loading && (
-              <Alert className="mb-4 bg-blue-100 border-blue-200 text-blue-700 rounded-xl">
-                <Activity className="h-4 w-4" />
-                <AlertDescription>Loading assigned RFPs...</AlertDescription>
-              </Alert>
-            )}
-            {error && (
-              <Alert variant="destructive" className="mb-4 rounded-xl">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            {success && (
-              <Alert className="mb-4 bg-green-100 border-green-200 text-green-700 rounded-xl">
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription>{success}</AlertDescription>
-              </Alert>
-            )}
+            case "my-rfps":
+              return (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">My Assigned RFPs</h2>
+                    <p className="text-gray-600">View and download RFPs assigned to you.</p>
+                  </div>
 
-            <Card className="border-0 shadow-lg">
-              <CardContent className="p-0"> {/* Removed padding for full-width table */}
-                <Table className="min-w-full">
-                  <TableHeader>
-                    <TableRow className="bg-gray-50">
-                      <TableHead>Filename</TableHead>
-                      <TableHead>Status</TableHead>
-                      {/* <TableHead>Assigned By</TableHead> */}
-                      <TableHead>Assigned Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {assignedRfps.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center py-4 text-gray-500">
-                          No RFPs assigned to you.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                    assignedRfps.map((rfp) => (
-                      <TableRow key={rfp.id} className="hover:bg-gray-50">
-                        <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={rfp.status === "completed" ? "default" : "outline"}
-                            className={`rounded-xl ${
-                              rfp.status === "pending"
-                                ? "bg-yellow-100 text-yellow-700"
-                                : rfp.status === "in_progress"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : rfp.status === "assigned"
-                                    ? "bg-purple-100 text-purple-700"
-                                    : "bg-green-100 text-green-700"
-                            }`}
-                          >
-                            {rfp.status.replace(/_/g, " ")}
-                          </Badge>
-                        </TableCell>
-                        {/*<TableCell className="text-gray-700">{rfp.uploaded_by_name}</TableCell>*/}
-                        <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg mr-2"
-                            onClick={() => handleViewRFP(rfp.id, rfp.file_url, rfp.filename)}
-                          >
-                            <Download className="h-4 w-4 mr-1" /> view
-                          </Button>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg mr-2"
-                            onClick={() => {
-                              setSelectedFilename(rfp.filename);
-                              // setSelectedFileUrl(rfp.file_url);
-                              setActiveSection("upload"); // Set active section to "upload" to trigger processing
-                            }}
-                          >
-                            <Upload className="h-4 w-4 mr-1" /> Process
-                          </Button>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700 text-white rounded-lg"
-                            onClick={() => handleMarkAsCompleted(rfp.id)}
-                            disabled={rfp.status === "completed"}
-                          >
-                            <CheckCircle className="h-4 w-4 mr-1" /> {rfp.status === "completed" ? "Completed" : "Mark as Completed"}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </div>
-        )
+                  {loading && (
+                    <Alert className="mb-4 bg-blue-100 border-blue-200 text-blue-700 rounded-xl">
+                      <Activity className="h-4 w-4" />
+                      <AlertDescription>Loading assigned RFPs...</AlertDescription>
+                    </Alert>
+                  )}
+                  {error && (
+                    <Alert variant="destructive" className="mb-4 rounded-xl">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+                  {success && (
+                    <Alert className="mb-4 bg-green-100 border-green-200 text-green-700 rounded-xl">
+                      <CheckCircle className="h-4 w-4" />
+                      <AlertDescription>{success}</AlertDescription>
+                    </Alert>
+                  )}
 
-      case "history":
-        return (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">RFP History</h2>
-              <p className="text-gray-600">View your past RFP processing activities</p>
-            </div>
+                  <Card className="border-0 shadow-lg">
+                    <CardContent className="p-0">
+                      <Table className="min-w-full">
+                        <TableHeader>
+                          <TableRow className="bg-gray-50">
+                            <TableHead>Filename</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Assigned Date</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {assignedRfps.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center py-4 text-gray-500">
+                                No RFPs assigned to you.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                          assignedRfps.map((rfp) => (
+                            <TableRow key={rfp.id} className="hover:bg-gray-50">
+                              <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={rfp.status === "completed" ? "default" : "outline"}
+                                  className={`rounded-xl ${
+                                    rfp.status === "pending"
+                                      ? "bg-yellow-100 text-yellow-700"
+                                      : rfp.status === "in_progress"
+                                        ? "bg-blue-100 text-blue-700"
+                                        : rfp.status === "assigned"
+                                          ? "bg-purple-100 text-purple-700"
+                                          : "bg-green-100 text-green-700"
+                                  }`}
+                                >
+                                  {rfp.status.replace(/_/g, " ")}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg mr-2"
+                                  onClick={() => handleViewRFP(rfp.id, rfp.file_url, rfp.filename)}
+                                >
+                                  <Download className="h-4 w-4 mr-1" /> view
+                                </Button>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg mr-2"
+                                  onClick={() => {
+                                    setSelectedFilename(rfp.filename);
+                                    setActiveSection("upload");
+                                  }}
+                                >
+                                  <Upload className="h-4 w-4 mr-1" /> Process
+                                </Button>
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                                  onClick={() => handleMarkAsCompleted(rfp.id)}
+                                  disabled={rfp.status === "completed"}
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-1" /> {rfp.status === "completed" ? "Completed" : "Mark as Completed"}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </div>
+              )
 
-            <Card className="border-0 shadow-lg">
-              <CardContent className="p-8 text-center">
-                <History className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No History Yet</h3>
-                <p className="text-gray-600">Your RFP processing history will appear here</p>
-              </CardContent>
-            </Card>
-          </div>
-        )
+            case "history":
+              return (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">RFP History</h2>
+                    <p className="text-gray-600">View your past RFP processing activities</p>
+                  </div>
 
-      // Removed "settings" case
+                  <Card className="border-0 shadow-lg">
+                    <CardContent className="p-8 text-center">
+                      <History className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">No History Yet</h3>
+                      <p className="text-gray-600">Your RFP processing history will appear here</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              )
 
-      default:
-        return null
-    }
+            default:
+              return null
+          }
+        })()}
+      </div>
+    )
   }
 
   return (
@@ -613,7 +613,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
               const isDisabled =
                 (item.id === "generate" && !rfpData) ||
                 (item.id === "edit" && !generatedResponse) ||
-                (item.id === "final" && !editedResponse)
+                (item.id === "final" && !editedResponse) ||
+                !token // Disable if no token
 
               return (
                 <button
@@ -676,7 +677,6 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 </h1>
                 <p className="text-sm text-gray-500">
                   {activeSection === "dashboard" && "Overview of your RFP processing workflow"}
-                  {/* Removed description for "upload" since it's now internal */}
                   {activeSection === "docs" && "Manage company documentation"}
                   {activeSection === "generate" && "Generate AI-powered responses"}
                   {activeSection === "edit" && "Review and edit generated responses"}

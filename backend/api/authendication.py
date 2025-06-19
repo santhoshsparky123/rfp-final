@@ -44,7 +44,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         access_token = create_access_token(
             data={"sub": employee.name}, expires_delta=access_token_expires
         )
-        
+        print(access_token)
         return {
             "access_token": access_token,
             "token_type": "bearer",

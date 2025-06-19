@@ -13,12 +13,12 @@ import { Upload, FileText, AlertCircle, Brain, X, File } from "lucide-react"
 
 // Updated UserContext interface to explicitly include companyId, employeeId, filename, and fileUrl
 interface UserContext {
-  userId: number;
+  userId: number; // Expecting number here from employee-dashboard.tsx's parseInt
   companyId: number;
-  employeeId: number;
-  authToken?: string;
+  employeeId: number; // Expecting number here
+  authToken?: string | null; // Allow authToken to be string, undefined, or null
   filename?: string;
-  fileUrl?: string;
+  fileUrl?: string; // Kept for potential external use cases like PDF preview
 }
 
 interface RFPUploadProps {
@@ -32,69 +32,31 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
   const [error, setError] = useState<string | null>(null)
   const [processingStage, setProcessingStage] = useState<string | null>(null)
   const [currentSlide, setCurrentSlide] = useState(0)
-  const [companyId, setCompanyId] = useState<number | null>(null);
-  const [rfpId, setRfpId] = useState<number | null>(null);
-  // Add state for filename and fileUrl
   const [filename, setFilename] = useState<string | null>(null);
-  const [fileUrl, setFileUrl] = useState<string | null>(null);
 
-  // This effect could be used if userContext needs to be loaded asynchronously
+
   useEffect(() => {
     // Validate that required IDs are present in the userContext
-    if (!userContext.userId || !userContext.companyId || !userContext.employeeId) {
-      setError("User authentication context is incomplete. Please log in again or contact support.")
+    if (!userContext.userId || !userContext.employeeId) {
+      setError("User authentication context is incomplete (missing userId or employeeId). Please log in again or contact support.")
     } else {
-      setError(null); // Clear error if context is valid
+      setError(null);
     }
-  }, [userContext]);
+  }, [userContext.userId, userContext.employeeId]); // Depend on specific userContext properties
 
-  // Fetch all upload context from backend using the new API
   useEffect(() => {
-    const fetchUploadContext = async () => {
-      if (userContext.employeeId) {
-        const response = await fetch(
-          `http://localhost:8000/api/upload-rfp`
-        );
-        if (!response.ok) {
-          setError("Failed to fetch upload context");
-          setCompanyId(null);
-          setRfpId(null);
-          setFilename(null);
-          setFileUrl(null);
-          return;
-        }
-        const data = await response.json();
-        setCompanyId(data.company_id || null);
-        setRfpId(data.rfp_id || null);
-        setFilename(data.filename || null);
-        setFileUrl(data.file_url || null);
-      } else {
-        setCompanyId(null);
-        setRfpId(null);
-        setFilename(null);
-        setFileUrl(null);
-      }
-    };
-    fetchUploadContext();
-  }, [userContext.employeeId]);
-
-  // Automatically upload when fileUrl and filename are set (from Process button)
-  useEffect(() => {
-    // Set filename and fileUrl from userContext if they exist
-    if (userContext.filename && userContext.fileUrl) {
+    if (userContext.filename) {
       setFilename(userContext.filename);
-      setFileUrl(userContext.fileUrl);
-      setSelectedFile(null); // Ensure no local file is selected if we are using a URL
+      setSelectedFile(null);
     }
-  }, [userContext.filename, userContext.fileUrl]);
+  }, [userContext.filename]);
 
 
-  // Trigger upload if fileUrl and filename are available and not already uploading
   useEffect(() => {
-    if (fileUrl && filename && !uploading && !selectedFile) {
+    if (userContext.filename && !uploading && !selectedFile) {
         handleUpload();
     }
-  }, [fileUrl, filename, selectedFile, uploading]); // Added selectedFile and uploading to dependency array
+  }, [userContext.filename, uploading, selectedFile]);
 
 
   const processingSlides = [
@@ -150,8 +112,7 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
       ) {
         setSelectedFile(file)
         setError(null)
-        setFilename(file.name); // Set filename from selected file
-        setFileUrl(null); // Clear fileUrl if a new file is selected
+        setFilename(file.name);
       } else {
         setError("Please select a PDF or Word document")
         setSelectedFile(null)
@@ -163,15 +124,13 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
     setSelectedFile(null)
     setError(null)
     setFilename(null);
-    setFileUrl(null);
-    // Reset file input
     const fileInput = document.getElementById("rfp-file") as HTMLInputElement
     if (fileInput) fileInput.value = ""
   }
 
   const getFileIcon = (file: File | { name: string, type?: string }) => {
     const fileName = file.name.toLowerCase()
-    const fileType = (file as File).type || ''; // Handle case where type might not be present for { name, type? }
+    const fileType = (file as File).type || '';
 
     if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
       return (
@@ -200,80 +159,70 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
   }
 
   const handleUpload = async () => {
-    if (!selectedFile && !(fileUrl && filename)) { // Updated condition
-      setError("Please select a file or provide a file URL first")
-      return
+    const isLocalFileUpload = selectedFile !== null;
+    const isFilenameProcessing = userContext.filename && !selectedFile;
+
+    if (!isLocalFileUpload && !isFilenameProcessing) {
+      setError("Please select a file or provide a filename for processing.");
+      return;
     }
 
-    // Ensure user context has all required IDs before proceeding
-    if (!userContext.userId || !userContext.employeeId) { // Removed companyId from this check
-      setError("User context is incomplete. Cannot upload.")
+    // Explicitly check for token here before proceeding with API call
+    if (!userContext.authToken) {
+      setError("Authentication token is missing. Please log in.");
+      setUploading(false);
+      return;
+    }
+    if (!userContext.userId || !userContext.employeeId) {
+      setError("User context is incomplete. Cannot upload.");
+      setUploading(false);
       return;
     }
     
-    // Ensure companyId and rfpId are fetched/set before proceeding
-    if (companyId === null || companyId === undefined) {
-      setError("Company ID is missing. Cannot upload.");
-      return;
-    }
-    if (rfpId === null || rfpId === undefined) {
-      setError("RFP ID is missing. Cannot upload.");
-      return;
-    }
-
-
     setUploading(true)
     setError(null)
     setProcessingStage("reading")
     setCurrentSlide(0)
 
     try {
-      // Simulate processing stages with slides
       for (let slideIndex = 0; slideIndex < processingSlides.length; slideIndex++) {
         setCurrentSlide(slideIndex)
-
-        // Show each step in the current slide
         for (let stepIndex = 0; stepIndex < processingSlides[slideIndex].steps.length; stepIndex++) {
           await new Promise((resolve) => setTimeout(resolve, 800))
         }
-
-        // Pause between slides
         await new Promise((resolve) => setTimeout(resolve, 500))
       }
 
       const formData = new FormData();
-      formData.append("company_id", String(companyId)); // Use the fetched companyId
-      formData.append("employee_id", String(userContext.employeeId));
-      formData.append("rfp_id", String(rfpId)); // Use the fetched rfpId
       
-      if (selectedFile) {
-        formData.append("file", selectedFile);
-        formData.append("filename", selectedFile.name);
-        console.log('Appending local file:', selectedFile.name);
-      } else if (fileUrl && filename) { // Ensure both are present for URL upload
-        formData.append("file_url", fileUrl);
-        formData.append("filename", filename); // Use the filename derived from the URL or passed in props
-        console.log('Appending file_url:', fileUrl);
-        console.log('Appending filename for URL:', filename);
+      if (isLocalFileUpload) {
+        formData.append("file", selectedFile as Blob);
+        formData.append("file_name", selectedFile?.name || '');
+        console.log('Appending local file:', selectedFile?.name);
+      } else if (isFilenameProcessing) {
+        formData.append("file_name", userContext.filename || '');
+        console.log('Appending filename for processing from context:', userContext.filename);
       } else {
-        setError("No file or file URL provided for upload.");
+        setError("No file or filename provided for upload.");
         setUploading(false);
         return;
       }
-      // Debug log all form data
+      
       for (let pair of formData.entries()) {
         console.log(pair[0]+ ':', pair[1]);
       }
 
-      const headers: HeadersInit = {};
-      if (userContext.authToken) {
-        headers['Authorization'] = `Bearer ${userContext.authToken}`;
-      }
+      const headers: HeadersInit = {
+        'Authorization': `Bearer ${userContext.authToken}`, // Auth token is guaranteed here
+      };
+      // Note: Do not set Content-Type for FormData manually, fetch will do it with boundary.
+
+      console.log('Authorization Header being sent:', headers['Authorization']);
 
       const response = await fetch("http://localhost:8000/api/upload-rfp/", {
         method: "POST",
         body: formData,
-        headers: headers, // Include auth token if your backend uses it
+        headers: headers,
       })
 
       if (!response.ok) {
@@ -294,7 +243,7 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
       const data = await response.json()
       console.log("RFP Upload Response:", data)
 
-      onUploadSuccess(data) // Pass the full response data
+      onUploadSuccess(data)
     } catch (err) {
       console.error("Upload error:", err)
       setError(err instanceof Error ? err.message : "Failed to process RFP. Please try again.")
@@ -329,7 +278,6 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
             <div className={`h-2 bg-gradient-to-r ${processingSlides[currentSlide].color}`} />
             <CardContent className={`p-8 bg-gradient-to-br ${processingSlides[currentSlide].bgColor}`}>
               <div className="text-center">
-                {/* Slide Indicator */}
                 <div className="flex justify-center mb-6">
                   {processingSlides.map((_, index) => (
                     <div
@@ -345,7 +293,6 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
                   ))}
                 </div>
 
-                {/* Current Slide Content */}
                 <div className="space-y-6">
                   <div className="text-6xl mb-4 animate-bounce">{processingSlides[currentSlide].icon}</div>
 
@@ -358,13 +305,12 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
                     <p className="text-gray-600 text-lg">{processingSlides[currentSlide].subtitle}</p>
                   </div>
 
-                  {/* Processing Steps */}
                   <div className="space-y-3">
                     {processingSlides[currentSlide].steps.map((step, stepIndex) => (
                       <div
                         key={stepIndex}
                         className={`flex items-center justify-center space-x-3 p-3 rounded-xl transition-all duration-500 ${
-                          stepIndex <= (Date.now() % 4) // Simple animation logic
+                          stepIndex <= (Date.now() % 4)
                             ? "bg-white/80 shadow-sm"
                             : "bg-white/40"
                         }`}
@@ -387,7 +333,6 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
                     ))}
                   </div>
 
-                  {/* Progress Bar */}
                   <div className="w-full bg-white/50 rounded-full h-2 overflow-hidden">
                     <div
                       className={`h-full bg-gradient-to-r ${processingSlides[currentSlide].color} transition-all duration-1000 ease-out`}
@@ -407,9 +352,8 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
         </div>
       )}
 
-      {/* Upload Form - Conditional Rendering */}
       {!uploading && (
-        (userContext.fileUrl && userContext.filename) ? ( // Condition to render when fileUrl and filename are present from userContext
+        userContext.filename ? (
           <>
             <Card className="border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors duration-200">
               <CardContent className="p-8">
@@ -420,16 +364,15 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
                         {getFileIcon({ name: userContext.filename, type: userContext.filename.endsWith(".pdf") ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })}
                         <div>
                           <div className="font-medium text-gray-900">{userContext.filename}</div>
-                          <div className="text-sm text-gray-600">File URL provided</div>
+                          <div className="text-sm text-gray-600">Document ready for processing</div>
                         </div>
                       </div>
-                      {/* No remove button here as it's a provided URL, not a local upload */}
                     </div>
                   </div>
 
                   <Button
                     onClick={handleUpload}
-                    disabled={uploading || !!error} // Disable if error in userContext
+                    disabled={uploading || !!error || !userContext.authToken} // Disable if no token
                     className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl font-semibold shadow-lg"
                   >
                     {uploading ? (
@@ -440,7 +383,7 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
                     ) : (
                       <>
                         <Upload className="w-5 h-5 mr-2" />
-                        Process Document from URL
+                        Process Document
                       </>
                     )}
                   </Button>
@@ -468,7 +411,7 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
               </div>
             </div>
           </>
-        ) : ( // Original upload form for local file selection
+        ) : (
           <>
             <Card className="border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors duration-200">
               <CardContent className="p-8">
@@ -513,7 +456,7 @@ export default function RFPUpload({ onUploadSuccess, userContext }: RFPUploadPro
 
                   <Button
                     onClick={handleUpload}
-                    disabled={!selectedFile || uploading || !!error} // Disable if error in userContext
+                    disabled={!selectedFile || uploading || !!error || !userContext.authToken} // Disable if no token
                     className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl font-semibold shadow-lg"
                   >
                     {uploading ? (

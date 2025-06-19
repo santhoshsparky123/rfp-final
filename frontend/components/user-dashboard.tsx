@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Progress } from "@/components/ui/progress" // Import Progress
 import { useDropzone } from "react-dropzone" // Import useDropzone
 import CreateCompanyForm from "./create-company-form" // Import CreateCompanyForm
+import { Checkbox } from "@/components/ui/checkbox" // Import Checkbox component
 
 import {
   User,
@@ -20,13 +21,14 @@ import {
   AlertCircle,
   Download,
   Clock,
-  Brain,
-  Calendar,
-  Activity,
-  File,
   Building,
   Zap,
   Upload,
+  LayoutDashboard,
+  PlusCircle,
+  ListOrdered,
+  Calendar,
+  Activity,
 } from "lucide-react"
 
 interface UserDashboardProps {
@@ -58,6 +60,8 @@ interface Company {
   subscription_end?: string
 }
 
+type ActiveSection = "upload" | "create-company" | "recent-submissions"
+
 export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
   const [submissions, setSubmissions] = useState<RFPSubmission[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
@@ -69,12 +73,11 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<number[]>([]) // Changed to array
 
   const [uploadedFile, setUploadedFile] = useState<File | null>(null) // From RFPUpload
   const [structuredData, setStructuredData] = useState<any>(null) // From RFPUpload
-
-  const [activeSection, setActiveSection] = useState<'upload' | 'view-rfp'>('upload')
+  const [activeSection, setActiveSection] = useState<ActiveSection>("upload") // State for active section
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
@@ -96,9 +99,7 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
     maxFiles: 1,
   })
 
-  // Removed processingSlides array as it's no longer used for UI
-
-  const fetchCompanies = useCallback(async () => { // Wrapped in useCallback
+  const fetchCompanies = useCallback(async () => {
     try {
       const token = localStorage.getItem("token")
       if (!token) {
@@ -117,22 +118,18 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
 
       const data = await response.json()
       setCompanies(data.companies || [])
-      if (data.companies && data.companies.length > 0) {
-        setSelectedCompanyId(data.companies[0].id) // Select the first company by default
-      }
+      // No default selection for checkboxes
     } catch (err) {
       console.error("Error fetching companies:", err)
       setError(err instanceof Error ? err.message : "Failed to fetch companies")
     } finally {
       setLoading(false)
     }
-  }, []) // Empty dependency array means it's created once
+  }, [])
 
   useEffect(() => {
-    // Fetch user's companies
     fetchCompanies()
 
-    // Load Razorpay script
     const script = document.createElement("script")
     script.src = "https://checkout.razorpay.com/v1/checkout.js"
     script.async = true
@@ -141,15 +138,21 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
     return () => {
       document.body.removeChild(script)
     }
-  }, [fetchCompanies]) // Add fetchCompanies to dependency array
+  }, [fetchCompanies])
+
+  const handleCheckboxChange = (companyId: number, isChecked: boolean) => {
+    setSelectedCompanyIds((prev) =>
+      isChecked ? [...prev, companyId] : prev.filter((id) => id !== companyId)
+    )
+  }
 
   const handleUpload = async () => {
     if (!uploadedFile) {
       setError("Please select a file to upload.")
       return
     }
-    if (!selectedCompanyId) {
-      setError("Please select a company before uploading.")
+    if (selectedCompanyIds.length === 0) {
+      setError("Please select at least one company before uploading.")
       return
     }
 
@@ -157,68 +160,92 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
     setUploadProgress(0)
     setError(null)
     setSuccess(null)
-    setProcessingStage(null) // Clear processing stage
-    setCurrentSlide(0) // Reset slide
+    setProcessingStage("reading")
+    setCurrentSlide(0)
 
     try {
-      const formData = new FormData()
-      formData.append("file", uploadedFile)
-      formData.append("userid", user.id)
-      formData.append("companyid", selectedCompanyId.toString())
+      let allUploadsSuccessful = true
+      const newSubmissions: RFPSubmission[] = []
+      let firstStructuredData: any = null
 
-      const token = localStorage.getItem("token")
-      if (!token) {
-        throw new Error("Authentication token not found")
+      for (const companyId of selectedCompanyIds) {
+        const formData = new FormData()
+        formData.append("file", uploadedFile)
+        formData.append("userid", user.id)
+        formData.append("companyid", companyId.toString())
+
+        const token = localStorage.getItem("token")
+        if (!token) {
+          throw new Error("Authentication token not found")
+        }
+
+        // Simulate progress for the actual upload
+        const progressInterval = setInterval(() => {
+          setUploadProgress((prev) => Math.min(prev + 10, 90))
+        }, 200)
+
+        try {
+          const response = await fetch("http://localhost:8000/api/user/upload", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+          })
+
+          clearInterval(progressInterval)
+          setUploadProgress(100)
+
+          if (!response.ok) {
+            allUploadsSuccessful = false
+            const errorData = await response.json()
+            throw new Error(
+              `Upload to company ${companyId} failed: ${errorData.detail || response.statusText}`
+            )
+          }
+
+          const data = await response.json()
+          console.log(`RFP Submission Response for company ${companyId}:`, data)
+          if (!firstStructuredData) {
+            firstStructuredData = data.structured_data || {} // Set structured data from the first successful upload
+          }
+
+          const newSubmission: RFPSubmission = {
+            id: data.document_id,
+            title: uploadedFile.name.replace(/\.(pdf|docx?|doc)$/i, "").replace(/-/g, " "),
+            submitted_at: new Date().toLocaleString(),
+            status: "completed",
+            file_name: uploadedFile.name,
+            response_ready: true,
+            rfp_id: data.document_id,
+          }
+          newSubmissions.push(newSubmission)
+        } catch (err) {
+          allUploadsSuccessful = false
+          console.error(`Submission error for company ${companyId}:`, err)
+          setError(
+            (err instanceof Error ? err.message : `Failed to submit RFP for company ${companyId}. Please try again.`)
+          )
+        }
       }
 
-      // Simulate progress for the actual upload
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => Math.min(prev + 10, 90))
-      }, 200)
+      setStructuredData(firstStructuredData)
+      setSubmissions([...newSubmissions, ...submissions])
 
-      const response = await fetch("http://localhost:8000/api/user/upload", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      })
-
-      clearInterval(progressInterval)
-      setUploadProgress(100)
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || `Upload failed: ${response.statusText}`)
+      if (allUploadsSuccessful) {
+        setSuccess("RFP processed successfully for all selected companies! Your responses are ready for download.")
+      } else {
+        setSuccess("RFP processing completed, but some uploads may have failed. Check error messages above.")
       }
-
-      const data = await response.json()
-      console.log("RFP Submission Response:", data)
-      setStructuredData(data.structured_data || {}) // Set structured data
-
-      const newSubmission: RFPSubmission = {
-        id: data.document_id,
-        title: uploadedFile.name.replace(/\.(pdf|docx?|doc)$/i, "").replace(/-/g, " "),
-        submitted_at: new Date().toLocaleString(),
-        status: "completed",
-        file_name: uploadedFile.name,
-        response_ready: true,
-        rfp_id: data.document_id,
-      }
-
-      const selectedCompany = companies.find(company => company.id === selectedCompanyId);
-      const companyName = selectedCompany ? selectedCompany.name : "your selected company";
-
-      setSubmissions([newSubmission, ...submissions])
-      setSuccess(`RFP processed and uploaded successfully to ${companyName}! Your response is ready for download.`) // Updated success message
 
       // Reset file input and uploaded file state
       setUploadedFile(null)
+      setSelectedCompanyIds([]) // Clear selected companies
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
     } catch (err) {
-      console.error("Submission error:", err)
+      console.error("Overall submission error:", err)
       setError(err instanceof Error ? err.message : "Failed to submit RFP. Please try again.")
       setUploadProgress(0) // Reset progress on error
       setStructuredData(null) // Clear structured data on error
@@ -229,13 +256,46 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
     }
   }
 
+  const handleDownload = async (submission: RFPSubmission, docType: "docx" | "pdf") => {
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        throw new Error("Authentication token not found")
+      }
+
+      const response = await fetch(`http://localhost:8000/api/download-document/${submission.rfp_id}/${docType}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to download document")
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${submission.title}-response.${docType}`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("Download error:", err)
+      setError("Failed to download document. Please try again.")
+    }
+  }
+
   const completedSubmissions = submissions.filter((s) => s.status === "completed").length
   const processingSubmissions = submissions.filter((s) => s.status === "processing").length
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-100 p-4">
       <div className="flex">
-        {/* Sidebar Navigation */}
+        {/* Side Navigation */}
         <aside className="w-64 bg-white rounded-2xl shadow-lg p-6 mr-6 flex-shrink-0">
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-4">
@@ -250,26 +310,42 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
               <User className="w-4 h-4 text-indigo-600" /> {user.name}
             </div>
             <div className="text-xs text-gray-500 mb-4">{user.email}</div>
-            <Badge className="mt-1 bg-indigo-100 text-indigo-700 hover:bg-indigo-200">User</Badge>
+            <Badge className="mt-1 bg-indigo-100 text-indigo-700 hover:bg-indigo-200">User Role</Badge>
           </div>
+
           <nav className="space-y-3">
             <Button
-              variant={activeSection === 'upload' ? 'secondary' : 'ghost'}
-              className={`w-full justify-start text-lg py-6 rounded-xl ${activeSection === 'upload' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100'}`}
-              onClick={() => setActiveSection('upload')}
+              variant={activeSection === "upload" ? "secondary" : "ghost"}
+              className={`w-full justify-start text-lg py-6 rounded-xl ${
+                activeSection === "upload" ? "bg-indigo-100 text-indigo-700" : "hover:bg-gray-100"
+              }`}
+              onClick={() => setActiveSection("upload")}
             >
               <Upload className="w-5 h-5 mr-3" />
-              Upload RFP
+              Upload Document
             </Button>
             <Button
-              variant={activeSection === 'view-rfp' ? 'secondary' : 'ghost'}
-              className={`w-full justify-start text-lg py-6 rounded-xl ${activeSection === 'view-rfp' ? 'bg-indigo-100 text-indigo-700' : 'hover:bg-gray-100'}`}
-              onClick={() => setActiveSection('view-rfp')}
+              variant={activeSection === "create-company" ? "secondary" : "ghost"}
+              className={`w-full justify-start text-lg py-6 rounded-xl ${
+                activeSection === "create-company" ? "bg-indigo-100 text-indigo-700" : "hover:bg-gray-100"
+              }`}
+              onClick={() => setActiveSection("create-company")}
             >
-              <FileText className="w-5 h-5 mr-3" />
-              View RFP
+              <PlusCircle className="w-5 h-5 mr-3" />
+              Create Company
+            </Button>
+            <Button
+              variant={activeSection === "recent-submissions" ? "secondary" : "ghost"}
+              className={`w-full justify-start text-lg py-6 rounded-xl ${
+                activeSection === "recent-submissions" ? "bg-indigo-100 text-indigo-700" : "hover:bg-gray-100"
+              }`}
+              onClick={() => setActiveSection("recent-submissions")}
+            >
+              <ListOrdered className="w-5 h-5 mr-3" />
+              Recent Submissions
             </Button>
           </nav>
+
           <div className="mt-10">
             <Button variant="outline" onClick={onLogout} className="w-full rounded-xl border-gray-300 hover:bg-gray-50">
               <LogOut className="w-4 h-4 mr-2" />
@@ -277,8 +353,24 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
             </Button>
           </div>
         </aside>
+
         {/* Main Content */}
         <main className="flex-1 max-w-7xl mx-auto">
+          {/* Header (moved from original position to be part of main content) */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl shadow-lg">
+                <LayoutDashboard className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-800 via-blue-800 to-cyan-800 bg-clip-text text-transparent">
+                  Dashboard Overview
+                </h1>
+                <p className="text-gray-600 mt-1">Manage your RFPs and companies</p>
+              </div>
+            </div>
+          </div>
+
           {/* Alerts */}
           {error && (
             <Alert variant="destructive" className="mb-6 rounded-xl border-red-200 bg-red-50">
@@ -286,16 +378,17 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
               <AlertDescription className="text-red-800">{error}</AlertDescription>
             </Alert>
           )}
+
           {success && (
             <Alert className="mb-6 rounded-xl border-green-200 bg-green-50">
               <CheckCircle className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-800">{success}</AlertDescription>
             </Alert>
           )}
-          {/* Upload Section */}
-          {activeSection === 'upload' && (
+
+          {/* Conditional Rendering based on activeSection */}
+          {activeSection === "upload" && (
             <div className="max-w-4xl mx-auto mb-8">
-              {/* Removed Processing Slides UI */}
               {/* RFP Upload Card (Conditional based on not uploading and no structured data yet) */}
               {!uploading && !structuredData && (
                 <Card className="shadow-xl border-0 overflow-hidden">
@@ -350,31 +443,40 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                           </Button>
                         </div>
 
-                        {/* Company Dropdown */}
+                        {/* Company Checkboxes */}
                         <div>
-                          <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-2">
-                            Select Company
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Select Companies to associate with this RFP
                           </label>
-                          <select
-                            id="company"
-                            className="w-full p-3 border border-gray-300 rounded-xl text-gray-700"
-                            value={selectedCompanyId ?? ""}
-                            onChange={(e) => setSelectedCompanyId(Number(e.target.value))}
-                            disabled={companies.length === 0}
-                          >
-                            <option value="">-- Select a company --</option>
-                            {companies.map((company) => (
-                              <option key={company.id} value={company.id}>
-                                {company.name}
-                              </option>
-                            ))}
-                          </select>
+                          {companies.length === 0 ? (
+                            <p className="text-gray-500 text-sm">No companies found. Please create a company first.</p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-40 overflow-y-auto pr-2">
+                              {companies.map((company) => (
+                                <div key={company.id} className="flex items-center space-x-2 p-2 border rounded-md">
+                                  <Checkbox
+                                    id={`company-${company.id}`}
+                                    checked={selectedCompanyIds.includes(company.id)}
+                                    onCheckedChange={(checked) =>
+                                      handleCheckboxChange(company.id, checked as boolean)
+                                    }
+                                  />
+                                  <label
+                                    htmlFor={`company-${company.id}`}
+                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                  >
+                                    {company.name}
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {uploading && (
                           <div className="space-y-2">
                             <div className="flex justify-between text-sm">
-                              <span>Uploading RFP...</span>
+                              <span>Processing RFP...</span>
                               <span>{uploadProgress}%</span>
                             </div>
                             <Progress value={uploadProgress} />
@@ -382,8 +484,8 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                         )}
 
                         {!structuredData && !uploading && (
-                          <Button onClick={handleUpload} className="w-full" disabled={!selectedCompanyId}>
-                            Upload RFP Document
+                          <Button onClick={handleUpload} className="w-full" disabled={selectedCompanyIds.length === 0}>
+                            Process RFP Document(s)
                           </Button>
                         )}
                       </div>
@@ -479,10 +581,86 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
               )}
             </div>
           )}
-          {/* View RFP Section */}
-          {activeSection === 'view-rfp' && (
-            <div>
-              <h2 className="text-2xl font-bold mb-4">My RFP Submissions</h2>
+
+          {activeSection === "create-company" && (
+            <div className="max-w-xl mx-auto mb-8">
+              <Card className="shadow-xl border-0 overflow-hidden">
+                <div className="h-1 bg-gradient-to-r from-teal-500 via-emerald-500 to-lime-500" />
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Building className="w-5 h-5" />
+                    Create New Company
+                  </CardTitle>
+                  <CardDescription>Add a new company to your account</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <CreateCompanyForm userId={user.id} onSuccess={fetchCompanies} />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeSection === "recent-submissions" && (
+            <>
+              {/* Stats Overview */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                {[
+                  {
+                    title: "Total Submissions",
+                    value: submissions.length,
+                    icon: FileText,
+                    color: "from-indigo-500 to-indigo-600",
+                    bgColor: "from-indigo-50 to-indigo-100",
+                  },
+                  {
+                    title: "Completed",
+                    value: completedSubmissions,
+                    icon: CheckCircle,
+                    color: "from-green-500 to-green-600",
+                    bgColor: "from-green-50 to-green-100",
+                  },
+                  {
+                    title: "Processing",
+                    value: processingSubmissions,
+                    icon: Clock,
+                    color: "from-blue-500 to-blue-600",
+                    bgColor: "from-blue-50 to-blue-100",
+                  },
+                  {
+                    title: "Companies",
+                    value: companies.length,
+                    icon: Building,
+                    color: "from-purple-500 to-purple-600",
+                    bgColor: "from-purple-50 to-purple-100",
+                  },
+                ].map((stat) => {
+                  const Icon = stat.icon
+                  return (
+                    <Card
+                      key={stat.title}
+                      className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
+                    >
+                      <div className={`h-2 bg-gradient-to-r ${stat.color}`} />
+                      <CardHeader className={`pb-3 bg-gradient-to-br ${stat.bgColor}`}>
+                        <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                          <Icon className="w-5 h-5" />
+                          {stat.title}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-4">
+                        <div
+                          className={`text-3xl font-bold bg-gradient-to-r ${stat.color} bg-clip-text text-transparent mb-1`}
+                        >
+                          {stat.value}
+                        </div>
+                        <p className="text-sm text-gray-600">Your account</p>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+
+              {/* Submission History */}
               {submissions.length > 0 ? (
                 <Card className="shadow-xl border-0 overflow-hidden">
                   <div className="h-1 bg-gradient-to-r from-green-500 via-blue-500 to-purple-500" />
@@ -525,30 +703,52 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                               </TableCell>
                               <TableCell>
                                 <Badge
-                                  variant={submission.status === 'completed' ? 'default' : 'outline'}
+                                  variant={submission.status === "completed" ? "default" : "outline"}
                                   className={`rounded-xl ${
-                                    submission.status === 'completed'
-                                      ? 'bg-green-100 text-green-700'
-                                      : submission.status === 'processing'
-                                      ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-red-100 text-red-700'
+                                    submission.status === "completed"
+                                      ? "bg-green-100 text-green-700"
+                                      : submission.status === "processing"
+                                        ? "bg-blue-100 text-blue-700"
+                                        : "bg-red-100 text-red-700"
                                   }`}
                                 >
-                                  {submission.status === 'processing' && <Clock className="w-3 h-3 mr-1" />}
-                                  {submission.status === 'completed' && <CheckCircle className="w-3 h-3 mr-1" />}
-                                  {submission.status === 'failed' && <AlertCircle className="w-3 h-3 mr-1" />}
+                                  {submission.status === "processing" && <Clock className="w-3 h-3 mr-1" />}
+                                  {submission.status === "completed" && <CheckCircle className="w-3 h-3 mr-1" />}
+                                  {submission.status === "failed" && <AlertCircle className="w-3 h-3 mr-1" />}
                                   {submission.status}
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => alert(`Viewing RFP: ${submission.title}`)}
-                                  className="rounded-lg"
-                                >
-                                  View
-                                </Button>
+                                {submission.response_ready ? (
+                                  <div className="flex gap-2">
+                                    <Button
+                                      onClick={() => handleDownload(submission, "docx")}
+                                      size="sm"
+                                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg"
+                                    >
+                                      <Download className="w-4 h-4 mr-1" />
+                                      Word
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleDownload(submission, "pdf")}
+                                      size="sm"
+                                      className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 rounded-lg"
+                                    >
+                                      <Download className="w-4 h-4 mr-1" />
+                                      PDF
+                                    </Button>
+                                  </div>
+                                ) : submission.status === "processing" ? (
+                                  <Badge variant="outline" className="rounded-lg">
+                                    <Clock className="w-3 h-3 mr-1" />
+                                    Processing...
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="rounded-lg text-red-600">
+                                    <AlertCircle className="w-3 h-3 mr-1" />
+                                    Failed
+                                  </Badge>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -565,7 +765,7 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                   </AlertDescription>
                 </Alert>
               )}
-            </div>
+            </>
           )}
         </main>
       </div>
