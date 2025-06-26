@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +38,7 @@ export default function CreateCompanyForm({ userId, onSuccess }: CreateCompanyFo
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false)
 
   const [companyData, setCompanyData] = useState({
     name: "",
@@ -53,7 +53,7 @@ export default function CreateCompanyForm({ userId, onSuccess }: CreateCompanyFo
       id: "3month",
       name: "3 Months",
       duration: 3,
-      pricePerEmployee: 14,
+      pricePerEmployee: 140000,
       description: "Quarterly plan with 7% savings",
       savings: "Save 7%",
     },
@@ -61,11 +61,22 @@ export default function CreateCompanyForm({ userId, onSuccess }: CreateCompanyFo
       id: "6month",
       name: "6 Months",
       duration: 6,
-      pricePerEmployee: 27,
+      pricePerEmployee: 270000,
       description: "Half-yearly plan with 10% savings",
       savings: "Save 10%",
     },
   ]
+
+  useEffect(() => {
+    if (!(window as any).Razorpay) {
+      const script = document.createElement("script")
+      script.src = "https://checkout.razorpay.com/v1/checkout.js"
+      script.onload = () => setRazorpayLoaded(true)
+      document.body.appendChild(script)
+    } else {
+      setRazorpayLoaded(true)
+    }
+  }, [])
 
   const calculateTotalAmount = () => {
     const plan = subscriptionPlans.find((p) => p.id === selectedPlan)
@@ -105,9 +116,15 @@ export default function CreateCompanyForm({ userId, onSuccess }: CreateCompanyFo
   }
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault && e.preventDefault()
     setLoading(true)
     setError(null)
+
+    if (!razorpayLoaded) {
+      setError("Razorpay SDK not loaded yet. Please try again in a moment.")
+      setLoading(false)
+      return
+    }
 
     const plan = subscriptionPlans.find((p) => p.id === selectedPlan)
     const totalAmount = calculateTotalAmount()
@@ -193,7 +210,7 @@ export default function CreateCompanyForm({ userId, onSuccess }: CreateCompanyFo
       }
 
       // @ts-ignore - Razorpay is loaded via script
-      const razorpay = new window.Razorpay(options)
+      const razorpay = new (window as any).Razorpay(options)
       razorpay.open()
     } catch (err) {
       console.error("Payment error:", err)

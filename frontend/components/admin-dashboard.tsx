@@ -76,6 +76,8 @@ interface RFP {
   assigned_to_worker_id?: string // Optional: To store the ID of the worker it's assigned to
   assigned_to_worker_name?: string // Optional: To store the name of the worker it's assigned to
   file_url: string // <-- Add this line
+  pdf_url?: string // Optional: URL to the PDF proposal document
+  docx_url?: string // Optional: URL to the DOCX proposal document
 }
 
 export default function AdminDashboard({ user, onLogout, token }: AdminDashboardProps) {
@@ -99,9 +101,11 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     password: "",
   })
 
-  const [activeContent, setActiveContent] = useState<"dashboard" | "workers" | "rfps">("dashboard")
+  const [activeContent, setActiveContent] = useState<"dashboard" | "workers" | "rfps" | "completion">("dashboard")
 
   const [usernames, setUsernames] = useState<{ [userId: number]: string }>({});
+  // State to store fetched PDF URLs for RFPs
+  const [pdfUrls, setPdfUrls] = useState<{ [rfpId: number]: string }>({});
 
   // Function to fetch company ID
   const fetchCompanyId = useCallback(async (userId: string) => {
@@ -221,7 +225,9 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
           created_at: rfp.created_at ? new Date(rfp.created_at).toLocaleDateString() : "N/A",
           assigned_to_worker_id: rfp.assigned_to_worker_id || undefined, // Populate if available from backend
           assigned_to_worker_name: rfp.assigned_to_worker_name || undefined, // Populate if available from backend
-          file_url: rfp.file_url // <-- Add this line
+          file_url: rfp.file_url || undefined, // Optional: URL to the original file
+          pdf_url: rfp.pdf_url || undefined, // Optional: URL to the PDF proposal document
+          docx_url: rfp.docx_url || undefined, // Optional: URL to the DOCX proposal document
         })),
       )
 
@@ -253,7 +259,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
       });
     }
   }, [rfps, fetchUsername, usernames]);
-
+  
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -517,6 +523,35 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     }
   }
 
+  // Function to fetch PDF URL for a given RFP ID (match user dashboard logic)
+  const fetchPdfUrl = async (rfpId: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("http://localhost:8000/api/final-rfp/status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ rfp_id: rfpId }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.pdf_url) {
+        setPdfUrls((prev) => ({ ...prev, [rfpId]: data.pdf_url }));
+      } else {
+        setError("No PDF proposal document available for this RFP.");
+      }
+    } catch (err: any) {
+      setError(`Failed to fetch proposal document: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const totalRFPs = rfps.length
   const activeWorkers = workers.filter((worker) => worker.status === "active").length
@@ -555,6 +590,14 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
           >
             <FileText className="w-5 h-5 mr-3" />
             View All RFPs
+          </Button>
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "completion" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("completion")}
+          >
+            <CheckCircle className="w-5 h-5 mr-3" />
+            Completion of RFP
           </Button>
         </nav>
 
@@ -945,6 +988,101 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                               onClick={() => window.open(rfp.file_url, "_blank")}
                             >
                               <Download className="h-4 w-4 mr-1" /> View
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {activeContent === "completion" && (
+          <section className="mb-8">
+            <Card className="rounded-2xl shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold text-gray-800">RFPs Pending Admin Verification</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table className="min-w-full">
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead>Filename</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Submitted Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rfps.filter(rfp => rfp.status === "pending").length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-4 text-gray-500">
+                          No RFPs pending admin verification.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      rfps.filter(rfp => rfp.status === "pending").map((rfp) => (
+                        <TableRow key={rfp.id} className="hover:bg-gray-50">
+                          <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
+                          <TableCell>
+                            <Badge className="rounded-xl bg-yellow-100 text-yellow-700">Pending Review</Badge>
+                          </TableCell>
+                          <TableCell className="text-gray-700">{rfp.assigned_to_worker_name || "N/A"}</TableCell>
+                          <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
+                          <TableCell className="text-right flex space-x-2 justify-end">
+                            {rfp.pdf_url ? (
+                              <Button
+                                onClick={() => window.open(rfp.pdf_url, "_blank")}
+                                size="sm"
+                                className="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 rounded-lg"
+                              >
+                                <Eye className="w-4 h-4 mr-1" />
+                                View Response
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                className="bg-gradient-to-r from-gray-400 to-gray-500 rounded-lg cursor-not-allowed opacity-60"
+                                disabled
+                              >
+                                <Eye className="w-4 h-4 mr-1" />
+                                No PDF
+                              </Button>
+                            )}
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                              onClick={async () => {
+                                setLoading(true);
+                                setError(null);
+                                setSuccess(null);
+                                try {
+                                  const response = await fetch(`http://localhost:8000/api/admin/rfps/${rfp.id}/accept`, {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      "Authorization": `Bearer ${token}`,
+                                    },
+                                  });
+                                  if (!response.ok) {
+                                    const errorData = await response.json();
+                                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                                  }
+                                  setSuccess(`RFP ${rfp.filename} marked as completed!`);
+                                  fetchRfps();
+                                } catch (err: any) {
+                                  setError(`Failed to mark RFP as completed: ${err.message}`);
+                                } finally {
+                                  setLoading(false);
+                                }
+                              }}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-1" /> Verified
                             </Button>
                           </TableCell>
                         </TableRow>

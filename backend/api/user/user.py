@@ -13,11 +13,11 @@ from pydantic import BaseModel, EmailStr
 import httpx
 import razorpay
 
-from methods.functions import get_password_hash, get_db
 from models.schema import (
     User, UserRole, RFP, Company, CompanyCreate,
     SubscriptionStatus, OrderRequest
 )
+from methods.functions import get_password_hash, get_db
 import boto3
 import uuid
 import datetime
@@ -125,17 +125,20 @@ def create_order(order: OrderRequest):
     RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
     client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
+    # Divide amount by 100 before passing to Razorpay
+    razorpay_amount = order.amount // 100
+
     notes = {
         "userid": str(order.userid),
         "company_name": order.company_name,
         "subdomain": order.subdomain,
-        "amount": str(order.amount),
+        "amount": str(razorpay_amount),
         "currency": order.currency
     }
 
     try:
         razorpay_order = client.order.create({
-            "amount": order.amount,
+            "amount": razorpay_amount,
             "currency": order.currency,
             "receipt": order.receipt,
             "payment_capture": 1,
@@ -144,7 +147,7 @@ def create_order(order: OrderRequest):
         return {
             "order_id": razorpay_order["id"],
             "razorpay_key": RAZORPAY_KEY_ID,
-            "amount": order.amount,
+            "amount": razorpay_amount,
             "currency": order.currency
         }
     except Exception as e:
@@ -261,3 +264,106 @@ async def initiate_payment(order_data: dict, db: Session = Depends(get_db)):
             "message": "Order created. Complete payment to activate subscription.",
             "order": razorpay_order
         }
+
+# -----------------------------------
+# Get Company Responses for a User
+# -----------------------------------
+@router.get("/user/{user_id}/company-responses")
+def get_company_responses(user_id: int, db: Session = Depends(get_db)):
+    try:
+        # Find all RFPs uploaded by this user
+        rfps = db.query(RFP).filter(RFP.uploaded_by == user_id).all()
+        rfp_ids = [rfp.id for rfp in rfps]
+        if not rfp_ids:
+            return {"responses": []}
+        # Find all company responses for these RFPs
+        # Assumes RFP has a status, docx_url, pdf_url, company_id, created_at, title
+        responses = (
+            db.query(RFP, Company)
+            .join(Company, RFP.company_id == Company.id)
+            .filter(RFP.id.in_(rfp_ids))
+            .all()
+        )
+        result = []
+        for rfp, company in responses:
+            result.append({
+                "id": rfp.id,
+                "title": rfp.filename or f"RFP {rfp.id}",
+                "company_name": company.name,
+                "docx_url": getattr(rfp, "docx_url", None),
+                "pdf_url": getattr(rfp, "pdf_url", None),
+                "created_at": rfp.created_at.isoformat() if hasattr(rfp, "created_at") and rfp.created_at else None,
+                "status": getattr(rfp, "status", "pending")
+            })
+        return {"responses": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch company responses: {e}")
+
+# -----------------------------------
+# Download DOCX file by RFP ID
+# -----------------------------------
+from fastapi.responses import StreamingResponse
+
+@router.get("/download-docx/{rfp_id}")
+def download_docx(rfp_id: int, db: Session = Depends(get_db)):
+    rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+    if not rfp or not rfp.docx_url:
+        raise HTTPException(status_code=404, detail="DOCX file not found")
+
+    # Extract S3 key from docx_url
+    import re
+    match = re.search(r"amazonaws.com/(.+)", rfp.docx_url)
+    if not match:
+        raise HTTPException(status_code=400, detail="Invalid S3 URL")
+    s3_key = match.group(1)
+
+    AWS_ACCESS_KEY_ID = os.getenv("ACCESS_KEY_AWS")
+    AWS_SECRET_ACCESS_KEY = os.getenv("SECRET_KEY_AWS")
+    BUCKET_NAME = "rfp-storage-bucket"
+    REGION = "us-east-1"
+
+    s3 = boto3.client(
+        "s3",
+        region_name=REGION,
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+    )
+    try:
+        s3_obj = s3.get_object(Bucket=BUCKET_NAME, Key=s3_key)
+        return StreamingResponse(
+            s3_obj["Body"],
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f"attachment; filename={rfp.filename or 'response.docx'}"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch DOCX: {e}")
+
+# -----------------------------------
+# Admin Endpoints
+# -----------------------------------
+@router.get("/admin/rfps/pending-review")
+def get_pending_review_rfps(db: Session = Depends(get_db)):
+    rfps = db.query(RFP).filter(RFP.status == "pending_review").all()
+    result = []
+    for rfp in rfps:
+        result.append({
+            "id": rfp.id,
+            "filename": rfp.filename,
+            "docx_url": rfp.docx_url,
+            "pdf_url": rfp.pdf_url,
+            "company_id": rfp.company_id,
+            "created_at": rfp.created_at,
+            "status": rfp.status
+        })
+    return {"rfps": result}
+
+@router.post("/admin/rfps/{rfp_id}/accept")
+def accept_rfp_review(rfp_id: int, db: Session = Depends(get_db)):
+    rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+    if not rfp:
+        raise HTTPException(status_code=404, detail="RFP not found")
+    rfp.status = "accepted"
+    db.commit()
+    return {"message": "RFP accepted and now visible to user."}

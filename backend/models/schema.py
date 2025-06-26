@@ -90,6 +90,7 @@ class Employee(Base):
     hashed_password = Column(String)    
     company_id = Column(Integer, ForeignKey("companies.id"))
     rfps_assigned = Column(MutableList.as_mutable(JSON), default=list)
+    rfps_finished = Column(MutableList.as_mutable(JSON), default=list)  # <-- add this line
     created_at = Column(DateTime, default=datetime.utcnow)
     role = Column(String ,default="employee")
     # Relationships

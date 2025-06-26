@@ -1,4 +1,4 @@
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 import google.generativeai as genai
 from docx import Document
 from datetime import datetime
@@ -21,19 +21,25 @@ def final_rfp(rfp_data: dict,
     # current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.EMPLOYEE])),
     db: Session = Depends(get_db)
 ):
+    print("ulla vante")
     """Generate the final proposal document for the RFP"""
+    print("adukum mela")
+    print(rfp_data)
     company_id = rfp_data.get("company_id")
     rfp_id = rfp_data.get("rfp_id")
     employee_id = rfp_data.get("employee_id")
-    if not company_id:
-        return {"error": "company ID is required"}
-    if not rfp_id:
-        return {"error": "rfp_id not found"}
-    if not employee_id:
-        return {"error": "employee_id is not found"}
+    print("id apro")
+    # if not company_id:
+    #     return {"error": "company ID is required"}
+    # print("company kadachuchu")
+    # if not rfp_id:
+    #     return {"error": "rfp_id not found"}
+    # print("rfp kadachuchu")
+    # if not employee_id:
+    #     return {"error": "employee_id is not found"}
+    # print("employee kadachuchu")
     # Generate content using Gemini
     llm = genai.GenerativeModel("gemini-1.5-flash")
-
     prompt = llm.generate_content(
         f"""
         You are an expert proposal writer. Compile the following question responses into a cohesive, professional
@@ -47,10 +53,18 @@ def final_rfp(rfp_data: dict,
         rfp_data: {rfp_data}
         """
     )
-
-    final_proposal_markdown = marko.convert(prompt.text)  # or .content if that's the correct attribute
-    subdomain = db.query(Company).filter(Company.id==company_id).first()
+    print("inga iruke")
+    final_proposal_markdown = prompt.text
+    print(final_proposal_markdown)# or .content if that's the correct attribute
+    print(company_id)
+    company = db.query(Company).filter(Company.id==company_id).first()
+    print(company_id)
+    print(company.subdomain)
+    if not company:
+        return {"error":"company_id not found"}
+    subdomain = company.subdomain
     # Generate Word and PDF documents from proposal
+    print("hi")
     file_paths = generate_and_upload_proposal(company_id, {
         "title": "RFP Response",
         "final_proposal": final_proposal_markdown
@@ -60,19 +74,35 @@ def final_rfp(rfp_data: dict,
     print(docx_url)
     print(pdf_url)
     rfp = db.query(RFP).filter(RFP.id==rfp_id).first()
+    rfp.status = "review pending"
     rfp.docx_url = docx_url
     rfp.pdf_url = pdf_url
-    rfp.status = "finished"
     db.commit()
     
-    employee = db.query(Employee).filter(Employee.id==employee_id).first()
-    if(rfp_id in employee.rfps_assigned):
-        employee.rfps_assigned.remove(rfp_id)
-    db.commit()
-    db.refresh(employee)
+    # employee = db.query(Employee).filter(Employee.id==employee_id).first()
+    # if(rfp_id in employee.rfps_assigned):
+    #     employee.rfps_finished = employee.rfps_finished if employee.rfps_finished else []
+    #     employee.rfps_finished.append(rfp_id)
+    #     employee.rfps_assigned.remove(rfp_id)
+    # db.commit()
+    # db.refresh(employee)
     # employee = db.query(Employee).filter(Employee.id==employee_id)
     return file_paths
 
+
+@router.post("/final-rfp/status", response_model=dict)
+async def final_rfp_status(request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
+    rfp_id = data.get("rfp_id")
+    if not rfp_id:
+        return {"error": "rfp_id is required"}
+    rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+    if not rfp:
+        return {"error": "RFP not found"}
+    return {
+        "docx_url": rfp.docx_url,
+        "pdf_url": rfp.pdf_url
+    }
 
 import boto3
 import os
@@ -90,8 +120,7 @@ def generate_and_upload_proposal(company_id, responses,subdomain):
     doc.add_heading(title, 0)
     doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d')}\n")
 
-    final_proposal = responses.get("final_proposal", "")
-    if final_proposal:
+    if final_proposal := responses.get("final_proposal", ""):
         sections = final_proposal.split("## ")
         for i, section in enumerate(sections):
             if i == 0 and not section.startswith("#"):
