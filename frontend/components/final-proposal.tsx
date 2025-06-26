@@ -1,6 +1,7 @@
+// final-proposal.tsx
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -18,6 +19,32 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [downloadUrls, setDownloadUrls] = useState<{ docx?: string; pdf?: string }>({})
+
+  // Poll for download links every 6 seconds if not available
+  useEffect(() => {
+    let interval: NodeJS.Timeout | undefined;
+    if (generated && (!downloadUrls.docx || !downloadUrls.pdf)) {
+      interval = setInterval(async () => {
+        try {
+          const response = await fetch("http://localhost:8000/api/final-rfp/status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rfp_id: editedResponse.rfp_id }),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.docx_url && data.pdf_url) {
+              setDownloadUrls({ docx: data.docx_url, pdf: data.pdf_url });
+              clearInterval(interval);
+            }
+          }
+        } catch (e) {
+          // Ignore polling errors
+        }
+      }, 6000);
+    }
+    return () => interval && clearInterval(interval);
+  }, [generated, downloadUrls, editedResponse.rfp_id]);
 
   const handleGenerateFinal = async () => {
     setGenerating(true)
@@ -39,49 +66,36 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
       }
 
       const data = await response.json()
-      console.log("Final Proposal Response:", data)
-
-      setDownloadUrls(data)
+      setDownloadUrls({ docx: data.docx_url, pdf: data.pdf_url })
       setGenerated(true)
       setSuccess("Final proposal generated successfully!")
       onProposalGenerated()
     } catch (err) {
-      console.error("Generation error:", err)
       setError(err instanceof Error ? err.message : "Failed to generate final proposal. Please try again.")
     } finally {
       setGenerating(false)
     }
   }
 
-  const handleDownload = async (docType: "docx" | "pdf") => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/download-document/${editedResponse.rfp_id}/${docType}`, {
-        method: "GET",
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to download document")
-      }
-
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `${editedResponse.rfp_id}_proposal.${docType}`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error("Download error:", err)
-      setError("Failed to download document. Please try again.")
+  const handleDownload = (docType: "docx" | "pdf") => {
+    const url = docType === "pdf" ? downloadUrls.pdf : downloadUrls.docx;
+    if (!url) {
+      setError("Download link not available. Please generate the proposal first.");
+      return;
     }
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${editedResponse.rfp_id}_proposal.${docType}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
-  const handlePreview = () => {
-    // Open preview in new tab
-    window.open(`http://localhost:8000/api/download-document/${editedResponse.rfp_id}/pdf`, "_blank")
-  }
+  // The handlePreview and Share buttons are removed as per the request.
+  // const handlePreview = () => {
+  //   // Open preview in new tab
+  //   window.open(`http://localhost:8000/api/download-document/${editedResponse.rfp_id}/pdf`, "_blank")
+  // }
 
   if (!editedResponse) {
     return (
@@ -243,7 +257,8 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
               </Button>
             </div>
 
-            <div className="flex gap-3">
+            {/* Removed Preview PDF and Share buttons as per the request */}
+            {/* <div className="flex gap-3">
               <Button onClick={handlePreview} variant="outline" className="flex-1 rounded-xl">
                 <Eye className="w-4 h-4 mr-2" />
                 Preview PDF
@@ -252,7 +267,7 @@ export default function FinalProposal({ editedResponse, onProposalGenerated }: F
                 <Share className="w-4 h-4 mr-2" />
                 Share
               </Button>
-            </div>
+            </div> */}
           </CardContent>
         </Card>
       )}

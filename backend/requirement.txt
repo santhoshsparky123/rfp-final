@@ -29,9 +29,10 @@ pycryptodome
 fastapi[standard]
 langchain_groq
 pycryptodome
-
+openpyxl
 sqlalchemy
 pgvector
 sentence-transformers
 boto3
 python-multipart
+razorpay

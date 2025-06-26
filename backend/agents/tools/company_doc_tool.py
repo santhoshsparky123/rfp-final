@@ -60,25 +60,47 @@ llm = ChatGroq(
     groq_api_key = "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"
 )
 
-def get_company_qa_tool(company_id: int) -> Tool:
-    """Create a Tool that queries company-specific documents from PGVector."""
+# def get_company_qa_tool(company_id: int) -> Tool:
+#     """Create a Tool that queries company-specific documents from PGVector."""
+#     vectorstore = PGVector(
+#         collection_name="company_docs",
+#         connection_string=PGVECTOR_CONNECTION_STRING,
+#         embedding_function=embeddings
+#     )
+
+#     retriever = vectorstore.as_retriever(search_kwargs={"filter": {"company_id": company_id}})
+    
+#     company_qa = RetrievalQA.from_chain_type(
+#         llm=llm,
+#         retriever=retriever,
+#         chain_type="stuff"
+#     )
+#     print("helloooooooooooooooooooooooooooooooooooooo")
+#     return Tool(
+#         name=f"CompanyDocTool-{company_id}",
+#         func=company_qa.run,
+#         description=f"Answer queries using only documents from company_id={company_id}."
+#     )
+def get_company_qa_tool(company_id: int):
     vectorstore = PGVector(
         collection_name="company_docs",
         connection_string=PGVECTOR_CONNECTION_STRING,
         embedding_function=embeddings
     )
-
     retriever = vectorstore.as_retriever(search_kwargs={"filter": {"company_id": company_id}})
-    
-    company_qa = RetrievalQA.from_chain_type(
-        llm=llm,
-        retriever=retriever,
-        chain_type="stuff"
-    )
-    print("helloooooooooooooooooooooooooooooooooooooo")
+    # Use invoke instead of get_relevant_documents (per deprecation warning)
+    def company_doc_query(query: str):
+        docs = retriever.invoke(query)
+        if not docs:
+            return "No relevant company documentation found."
+        # Return the most relevant doc's content (or concatenate top N)
+        if isinstance(docs, list):
+            return docs[0].page_content
+        return str(docs)
+    from langchain.tools import Tool
     return Tool(
         name=f"CompanyDocTool-{company_id}",
-        func=company_qa.run,
+        func=company_doc_query,
         description=f"Answer queries using only documents from company_id={company_id}."
     )
 

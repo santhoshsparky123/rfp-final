@@ -1,4 +1,3 @@
-// employee-dashboard.tsx
 "use client"
 
 import { useState, useEffect, useCallback, use } from "react"
@@ -73,9 +72,11 @@ interface RFP { // Re-defining RFP interface for clarity in employee dashboard
   id: number
   filename: string
   content_type: string
-  status: "pending" | "in_progress" | "completed" | "assigned"
+  status: "pending" | "in_progress" | "completed" | "assigned" | "pending_review"
   created_at: string
   file_url: string // Add file_url
+  docx_url?: string; // Added for final DOCX download
+  pdf_url?: string;  // Added for final PDF download
 }
 
 
@@ -91,6 +92,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const [editedResponse, setEditedResponse] = useState<GeneratedResponse | null>(null)
   const [finalProposalGenerated, setFinalProposalGenerated] = useState(false)
   const [assignedRfps, setAssignedRfps] = useState<RFP[]>([]) // New state for assigned RFPs
+  // Only filename for completed RFPs
+  const [completedRfps, setCompletedRfps] = useState<{ id: number; filename: string }[]>([]); // State for completed RFPs
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -143,11 +146,20 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     // Only fetch assigned RFPs if token is present and not null
     if (token) {
       fetchAssignedRfps()
+      fetchCompletedRfps();
     } else {
       setError("Authentication token is missing. Please log in to view assigned RFPs.");
-      setAssignedRfps([]); // Clear assigned RFPs if no token
+      setAssignedRfps([]);
+      setCompletedRfps([]);
     }
   }, [user.id, token]) // Depend on user.id and token
+
+  // Fetch completed RFPs when navigating to the History section
+  useEffect(() => {
+    if (activeSection === "history" && token) {
+      fetchCompletedRfps();
+    }
+  }, [activeSection, token]);
 
 
   const fetchAssignedRfps = async () => {
@@ -187,6 +199,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
           status: rfp.status,
           created_at: rfp.created_at ? new Date(rfp.created_at).toLocaleDateString() : "N/A",
           file_url: rfp.file_url,
+          docx_url: rfp.docx_url, // Fetch docx_url
+          pdf_url: rfp.pdf_url,   // Fetch pdf_url
         })),
       )
     } catch (err: any) {
@@ -197,40 +211,75 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   }
 
-  const handleDownloadRFP = async (rfpId: number, filename: string) => {
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
-
+  // Fetch only filenames for completed RFPs
+  const fetchCompletedRfps = async () => {
+    setLoading(true);
+    setError(null);
     try {
       if (!token) {
-        throw new Error("Authentication token is missing. Cannot download RFP.");
+        throw new Error("Authentication token is missing. Cannot fetch completed RFPs.");
       }
-      const response = await fetch(`http://localhost:8000/api/download_rfp/${rfpId}`, {
-        method: "GET",
+      const response = await fetch(`http://localhost:8000/api/employee/completed_rfps/${user.id}`, {
         headers: {
+          "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-      })
-
+      });
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-
-      setSuccess(`RFP ${filename} downloaded successfully!`);
+      const rawData = await response.json();
+      let fetchedRfps: any[] = [];
+      if (Array.isArray(rawData)) {
+        fetchedRfps = rawData;
+      } else if (Array.isArray(rawData.rfps)) {
+        fetchedRfps = rawData.rfps;
+      } else {
+        throw new Error("Backend response is not an array or does not contain an 'rfps' array.");
+      }
+      // Only set filename for each completed RFP, filter out empty/invalid filenames
+      setCompletedRfps(
+        fetchedRfps
+          .filter((rfp: any) => rfp && typeof rfp.filename === 'string' && rfp.filename.trim() !== '')
+          .map((rfp: any, idx: number) => ({
+            id: idx,
+            filename: rfp.filename
+          }))
+      );
     } catch (err: any) {
-      setError(`Failed to download RFP: ${err.message}`);
+      console.error("Error fetching completed RFPs:", err);
+      setError(`Failed to fetch completed RFPs: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleDownloadFile = async (url: string | undefined, filename: string) => {
+    if (!url) {
+      setError(`No download URL available for ${filename}.`);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to download ${filename}: ${response.statusText}`);
+      }
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(link.href);
+      setSuccess(`${filename} downloaded successfully!`);
+    } catch (err: any) {
+      setError(`Error downloading ${filename}: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -251,7 +300,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: "completed" }),
+        body: JSON.stringify({ status: "pending_review" }), // Set to pending_review
       })
 
       if (!response.ok) {
@@ -261,11 +310,11 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
 
       setAssignedRfps(prevRfps =>
         prevRfps.map(rfp =>
-          rfp.id === rfpId ? { ...rfp, status: "completed" } : rfp
+          rfp.id === rfpId ? { ...rfp, status: "pending_review" } : rfp
         )
       )
 
-      setSuccess(`RFP marked as completed successfully!`);
+      setSuccess(`RFP marked as completed and sent for admin review!`);
     } catch (err: any) {
       setError(`Failed to mark RFP as completed: ${err.message}`);
     } finally {
@@ -273,7 +322,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   };
 
-  const handleViewRFP = async (rfpId: number, fileUrl: string, filename?: string) => {
+  const handleViewOriginalRFP = async (rfpId: number, fileUrl: string, filename?: string) => {
     try {
       if (!token) {
         throw new Error("Authentication token is missing. Cannot set current RFP.");
@@ -519,14 +568,16 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                               </TableCell>
                               <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
                               <TableCell className="text-right">
+                                {/* Button to view original RFP - Renamed for clarity */}
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg mr-2"
-                                  onClick={() => handleViewRFP(rfp.id, rfp.file_url, rfp.filename)}
+                                  onClick={() => handleViewOriginalRFP(rfp.id, rfp.file_url, rfp.filename)}
                                 >
-                                  <Download className="h-4 w-4 mr-1" /> view
+                                  <Download className="h-4 w-4 mr-1" /> View Original
                                 </Button>
+                                {/* Process Button */}
                                 <Button
                                   variant="default"
                                   size="sm"
@@ -538,6 +589,29 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                                 >
                                   <Upload className="h-4 w-4 mr-1" /> Process
                                 </Button>
+                                {/* Download Word Button (if docx_url exists and status is completed) */}
+                                {rfp.docx_url && rfp.status === "completed" && (
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg mr-2"
+                                    onClick={() => handleDownloadFile(rfp.docx_url, `${rfp.filename.split('.')[0]}_proposal.docx`)}
+                                  >
+                                    <Download className="h-4 w-4 mr-1" /> Download Word
+                                  </Button>
+                                )}
+                                {/* Download PDF Button (if pdf_url exists and status is completed) */}
+                                {rfp.pdf_url && rfp.status === "completed" && (
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    className="bg-red-600 hover:bg-red-700 text-white rounded-lg mr-2"
+                                    onClick={() => handleDownloadFile(rfp.pdf_url, `${rfp.filename.split('.')[0]}_proposal.pdf`)}
+                                  >
+                                    <Download className="h-4 w-4 mr-1" /> Download PDF
+                                  </Button>
+                                )}
+                                {/* Mark as Completed Button */}
                                 <Button
                                   variant="default"
                                   size="sm"
@@ -567,10 +641,29 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                   </div>
 
                   <Card className="border-0 shadow-lg">
-                    <CardContent className="p-8 text-center">
-                      <History className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">No History Yet</h3>
-                      <p className="text-gray-600">Your RFP processing history will appear here</p>
+                    <CardContent className="p-0">
+                      <Table className="min-w-full">
+                        <TableHeader>
+                          <TableRow className="bg-gray-50">
+                            <TableHead>Filename</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {completedRfps.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={1} className="text-center py-4 text-gray-500">
+                                No completed RFPs yet.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            completedRfps.map((rfp) => (
+                              <TableRow key={rfp.id} className="hover:bg-gray-50">
+                                <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
                     </CardContent>
                   </Card>
                 </div>
@@ -719,7 +812,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* PDF Modal */}
+      {/* PDF Modal (for original RFP preview) */}
       {pdfModalOpen && pdfUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white rounded-lg shadow-lg max-w-3xl w-full p-6 relative">
@@ -729,7 +822,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
             >
               <X className="w-6 h-6" />
             </button>
-            <h2 className="text-xl font-bold mb-4">RFP Document Preview</h2>
+            <h2 className="text-xl font-bold mb-4">Original RFP Document Preview</h2>
             <div className="mb-4" style={{ height: "60vh" }}>
               <iframe
                 src={pdfUrl}
