@@ -144,6 +144,7 @@ def generate_and_upload_proposal(company_id, responses,subdomain):
                 doc.add_heading(f"Question {q_id}", level=2)
                 doc.add_paragraph(response)
 
+
     # Save .docx to temp
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     filename_base = f"{title.replace(' ', '_')}_{timestamp}"

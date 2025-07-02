@@ -36,6 +36,7 @@ import {
   RefreshCw, // For unassign action
   UploadCloud, // Added for upload document
 } from "lucide-react"
+import RFPMessagePage from "@/components/rfp-messages-page"
 
 interface AdminDashboardProps {
   user: {
@@ -101,11 +102,12 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     password: "",
   })
 
-  const [activeContent, setActiveContent] = useState<"dashboard" | "workers" | "rfps" | "completion">("dashboard")
+  const [activeContent, setActiveContent] = useState<"dashboard" | "workers" | "rfps" | "completion" | "messages">("dashboard")
 
   const [usernames, setUsernames] = useState<{ [userId: number]: string }>({});
   // State to store fetched PDF URLs for RFPs
   const [pdfUrls, setPdfUrls] = useState<{ [rfpId: number]: string }>({});
+  const [selectedRfpId, setSelectedRfpId] = useState<number | null>(null); // New state for selected RFP ID
 
   // Function to fetch company ID
   const fetchCompanyId = useCallback(async (userId: string) => {
@@ -128,9 +130,11 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     try {
       const res = await fetch(`http://localhost:8000/api/fetch-username/${userId}`);
       const data = await res.json();
-      if (data.username) {
-        setUsernames(prev => ({ ...prev, [userId]: data.username }));
-        return data.username;
+      // Defensive: handle both {username: ...} and string response
+      const username = typeof data === 'string' ? data : data.username;
+      if (username) {
+        setUsernames(prev => ({ ...prev, [userId]: username }));
+        return username;
       }
     } catch (e) {
       console.error("Failed to fetch username for userId", userId, e);
@@ -557,219 +561,10 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
   const activeWorkers = workers.filter((worker) => worker.status === "active").length
   const currentProjects = workers.reduce((sum, worker) => sum + worker.current_projects, 0)
 
-  return (
-    <div className="flex min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100">
-      {/* Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-blue-700 to-indigo-800 text-white shadow-xl flex flex-col p-4">
-        <div className="flex items-center gap-3 mb-8 px-2 py-3 rounded-lg bg-blue-800/50">
-          <Shield className="w-7 h-7 text-blue-200" />
-          <h2 className="text-2xl font-bold">Admin Panel</h2>
-        </div>
-
-        <nav className="flex-1 space-y-2">
-          <Button
-            variant="ghost"
-            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "dashboard" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
-            onClick={() => setActiveContent("dashboard")}
-          >
-            <LayoutDashboard className="w-5 h-5 mr-3" />
-            Dashboard
-          </Button>
-          <Button
-            variant="ghost"
-            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "workers" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
-            onClick={() => setActiveContent("workers")}
-          >
-            <Users className="w-5 h-5 mr-3" />
-            Employees
-          </Button>
-          <Button
-            variant="ghost"
-            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "rfps" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
-            onClick={() => setActiveContent("rfps")}
-          >
-            <FileText className="w-5 h-5 mr-3" />
-            View All RFPs
-          </Button>
-          <Button
-            variant="ghost"
-            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "completion" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
-            onClick={() => setActiveContent("completion")}
-          >
-            <CheckCircle className="w-5 h-5 mr-3" />
-            Completion of RFP
-          </Button>
-        </nav>
-
-        <div className="mt-auto border-t border-blue-600 pt-4">
-          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
-              <Button className="w-full bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg mb-3">
-                <UserPlus className="w-4 h-4 mr-2" />
-                Add New Employee
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md rounded-2xl">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-blue-600" />
-                  Add New Employee
-                </DialogTitle>
-                <DialogDescription>Create a new employee account with RFP processing capabilities.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleCreateWorker} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    value={newWorker.name}
-                    onChange={(e) => setNewWorker({ ...newWorker, name: e.target.value })}
-                    placeholder="Enter full name"
-                    required
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email Address</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={newWorker.email}
-                    onChange={(e) => setNewWorker({ ...newWorker, email: e.target.value })}
-                    placeholder="Enter email address"
-                    required
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Initial Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={newWorker.password}
-                    onChange={(e) => setNewWorker({ ...newWorker, password: e.target.value })}
-                    placeholder="Enter initial password"
-                    required
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl"
-                  >
-                    {loading ? "Creating..." : "Add Worker"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowCreateDialog(false)}
-                    className="flex-1 rounded-xl"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          {/* New Button: Upload Company Document */}
-          <Dialog open={showUploadDocumentDialog} onOpenChange={setShowUploadDocumentDialog}>
-            <DialogTrigger asChild>
-              <Button className="w-full bg-green-600 hover:bg-green-700 rounded-xl shadow-lg mb-3">
-                <UploadCloud className="w-4 h-4 mr-2" />
-                Upload Company Document
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md rounded-2xl">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <UploadCloud className="w-5 h-5 text-green-600" />
-                  Upload Company Document
-                </DialogTitle>
-                <DialogDescription>Upload a new RFP document for processing.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleUploadDocument} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="document">Select Document</Label>
-                  <Input
-                    id="document"
-                    type="file"
-                    onChange={handleFileChange}
-                    required
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    type="submit"
-                    disabled={loading || !newDocument}
-                    className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 rounded-xl"
-                  >
-                    {loading ? "Uploading..." : "Upload Document"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setShowUploadDocumentDialog(false);
-                      setNewDocument(null); // Clear selected file on cancel
-                    }}
-                    className="flex-1 rounded-xl"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          <Button
-            onClick={onLogout}
-            className="w-full bg-red-500 hover:bg-red-600 rounded-xl shadow-lg mt-3"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Logout
-          </Button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
-        <header className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-extrabold text-gray-800">Welcome, {user.name}</h1>
-          <div className="flex items-center space-x-4">
-            <Badge variant="secondary" className="text-lg px-4 py-2 rounded-full">
-              <Mail className="w-4 h-4 mr-2" />
-              {user.email}
-            </Badge>
-            <Badge variant="secondary" className="text-lg px-4 py-2 rounded-full bg-blue-500 text-white">
-              <Shield className="w-4 h-4 mr-2" />
-              {user.role.toUpperCase()}
-            </Badge>
-          </div>
-        </header>
-
-        {loading && (
-          <Alert className="mb-4 bg-blue-100 border-blue-200 text-blue-700 rounded-xl">
-            <Activity className="h-4 w-4" />
-            <AlertDescription>Loading data...</AlertDescription>
-          </Alert>
-        )}
-        {error && (
-          <Alert variant="destructive" className="mb-4 rounded-xl">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        {success && (
-          <Alert className="mb-4 bg-green-100 border-green-200 text-green-700 rounded-xl">
-            <CheckCircle className="h-4 w-4" />
-            <AlertDescription>{success}</AlertDescription>
-          </Alert>
-        )}
-
+  const renderContent = () => {
+    return (
+      <div className="space-y-8">
+        {/* Dashboard Stats */}
         {activeContent === "dashboard" && (
           <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <Card className="rounded-2xl shadow-lg border border-blue-200">
@@ -989,6 +784,17 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                             >
                               <Download className="h-4 w-4 mr-1" /> View
                             </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg"
+                              onClick={() => {
+                                setSelectedRfpId(rfp.id);
+                                setActiveContent("messages");
+                              }}
+                            >
+                              <Mail className="h-4 w-4 mr-1" /> Messages
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))
@@ -1084,6 +890,64 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                             >
                               <CheckCircle className="h-4 w-4 mr-1" /> Verified
                             </Button>
+                            {/* Send Message Button */}
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="ml-2 bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200 rounded-lg"
+                                >
+                                  Send Message
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-md rounded-2xl">
+                                <DialogHeader>
+                                  <DialogTitle>Send Message to Employee</DialogTitle>
+                                  <DialogDescription>Enter a message for this RFP. It will be stored in the RFP's message history.</DialogDescription>
+                                </DialogHeader>
+                                <form
+                                  onSubmit={async (e) => {
+                                    e.preventDefault();
+                                    const form = e.target as HTMLFormElement;
+                                    const messageInput = form.elements.namedItem("message") as HTMLInputElement;
+                                    const message = messageInput.value;
+                                    setLoading(true);
+                                    setError(null);
+                                    setSuccess(null);
+                                    try {
+                                      const response = await fetch(`http://localhost:8000/api/admin/rfps/${rfp.id}/message`, {
+                                        method: "POST",
+                                        headers: {
+                                          "Content-Type": "application/json",
+                                          "Authorization": `Bearer ${token}`,
+                                        },
+                                        body: JSON.stringify({ message }),
+                                      });
+                                      if (!response.ok) {
+                                        const errorData = await response.json();
+                                        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                                      }
+                                      setSuccess("Message sent and stored successfully!");
+                                      fetchRfps();
+                                    } catch (err: any) {
+                                      setError(`Failed to send message: ${err.message}`);
+                                    } finally {
+                                      setLoading(false);
+                                    }
+                                  }}
+                                  className="space-y-4"
+                                >
+                                  <Label htmlFor="message">Message</Label>
+                                  <Input id="message" name="message" required className="rounded-xl" />
+                                  <DialogFooter>
+                                    <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
+                                      Send
+                                    </Button>
+                                  </DialogFooter>
+                                </form>
+                              </DialogContent>
+                            </Dialog>
                           </TableCell>
                         </TableRow>
                       ))
@@ -1094,6 +958,246 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
             </Card>
           </section>
         )}
+
+        {activeContent === "messages" && (
+          <section className="mb-8">
+            <Card className="rounded-2xl shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold text-gray-800">RFP Messages</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Render RFPMessagePage component directly */}
+                <RFPMessagePage user={{ id: user.id, role: user.role, token: token || '' }} rfpId={selectedRfpId || rfps[0]?.id || 0} isAdmin={user.role === 'admin'} />
+              </CardContent>
+            </Card>
+          </section>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100">
+      {/* Sidebar */}
+      <aside className="w-64 bg-gradient-to-b from-blue-700 to-indigo-800 text-white shadow-xl flex flex-col p-4">
+        <div className="flex items-center gap-3 mb-8 px-2 py-3 rounded-lg bg-blue-800/50">
+          <Shield className="w-7 h-7 text-blue-200" />
+          <h2 className="text-2xl font-bold">Admin Panel</h2>
+        </div>
+
+        <nav className="flex-1 space-y-2">
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "dashboard" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("dashboard")}
+          >
+            <LayoutDashboard className="w-5 h-5 mr-3" />
+            Dashboard
+          </Button>
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "workers" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("workers")}
+          >
+            <Users className="w-5 h-5 mr-3" />
+            Employees
+          </Button>
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "rfps" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("rfps")}
+          >
+            <FileText className="w-5 h-5 mr-3" />
+            View All RFPs
+          </Button>
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "completion" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("completion")}
+          >
+            <CheckCircle className="w-5 h-5 mr-3" />
+            Completion of RFP
+          </Button>
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "messages" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("messages")}
+          >
+            <Mail className="w-5 h-5 mr-3" />
+            Messages
+          </Button>
+        </nav>
+
+        <div className="mt-auto border-t border-blue-600 pt-4">
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <DialogTrigger asChild>
+              <Button className="w-full bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg mb-3">
+                <UserPlus className="w-4 h-4 mr-2" />
+                Add New Employee
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md rounded-2xl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-blue-600" />
+                  Add New Employee
+                </DialogTitle>
+                <DialogDescription>Create a new employee account with RFP processing capabilities.</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleCreateWorker} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input
+                    id="name"
+                    value={newWorker.name}
+                    onChange={(e) => setNewWorker({ ...newWorker, name: e.target.value })}
+                    placeholder="Enter full name"
+                    required
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={newWorker.email}
+                    onChange={(e) => setNewWorker({ ...newWorker, email: e.target.value })}
+                    placeholder="Enter email address"
+                    required
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Initial Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={newWorker.password}
+                    onChange={(e) => setNewWorker({ ...newWorker, password: e.target.value })}
+                    placeholder="Enter initial password"
+                    required
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-xl"
+                  >
+                    {loading ? "Creating..." : "Add Worker"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowCreateDialog(false)}
+                    className="flex-1 rounded-xl"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* New Button: Upload Company Document */}
+          <Dialog open={showUploadDocumentDialog} onOpenChange={setShowUploadDocumentDialog}>
+            <DialogTrigger asChild>
+              <Button className="w-full bg-green-600 hover:bg-green-700 rounded-xl shadow-lg mb-3">
+                <UploadCloud className="w-4 h-4 mr-2" />
+                Upload Company Document
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md rounded-2xl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <UploadCloud className="w-5 h-5 text-green-600" />
+                  Upload Company Document
+                </DialogTitle>
+                <DialogDescription>Upload a new RFP document for processing.</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleUploadDocument} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="document">Select Document</Label>
+                  <Input
+                    id="document"
+                    type="file"
+                    onChange={handleFileChange}
+                    required
+                    className="rounded-xl"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    type="submit"
+                    disabled={loading || !newDocument}
+                    className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 rounded-xl"
+                  >
+                    {loading ? "Uploading..." : "Upload Document"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowUploadDocumentDialog(false);
+                      setNewDocument(null); // Clear selected file on cancel
+                    }}
+                    className="flex-1 rounded-xl"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Button
+            onClick={onLogout}
+            className="w-full bg-red-500 hover:bg-red-600 rounded-xl shadow-lg mt-3"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Logout
+          </Button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 p-8 overflow-y-auto">
+        <header className="flex justify-between items-center mb-8">
+          <h1 className="text-4xl font-extrabold text-gray-800">Welcome, {user.name}</h1>
+          <div className="flex items-center space-x-4">
+            <Badge variant="secondary" className="text-lg px-4 py-2 rounded-full">
+              <Mail className="w-4 h-4 mr-2" />
+              {user.email}
+            </Badge>
+            <Badge variant="secondary" className="text-lg px-4 py-2 rounded-full bg-blue-500 text-white">
+              <Shield className="w-4 h-4 mr-2" />
+              {user.role.toUpperCase()}
+            </Badge>
+          </div>
+        </header>
+
+        {loading && (
+          <Alert className="mb-4 bg-blue-100 border-blue-200 text-blue-700 rounded-xl">
+            <Activity className="h-4 w-4" />
+            <AlertDescription>Loading data...</AlertDescription>
+          </Alert>
+        )}
+        {error && (
+          <Alert variant="destructive" className="mb-4 rounded-xl">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {success && (
+          <Alert className="mb-4 bg-green-100 border-green-200 text-green-700 rounded-xl">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription>{success}</AlertDescription>
+          </Alert>
+        )}
+
+        {renderContent()}
       </main>
     </div>
   )

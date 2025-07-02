@@ -2,7 +2,6 @@ from fastapi import Depends, APIRouter
 from sqlalchemy.orm import Session
 from models.schema import Company,User
 from methods.functions import get_db
-# from fetch_username import fetch_username
 router = APIRouter(prefix="/api")
 
 def fetch_username(user_id: int, db: Session):

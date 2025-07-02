@@ -106,3 +106,26 @@ def get_completed_rfps_by_employee(employee_id: int, db: Session = Depends(get_d
             })
     print(f"Response for finished RFPs: {arr}")
     return {"rfps": arr}
+
+
+@router.post("/employee/rfps/{rfp_id}/message")
+async def add_employee_rfp_message(
+    rfp_id: int,
+    payload: dict,
+    db: Session = Depends(get_db)
+):
+    message = payload.get("message")
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required.")
+    rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+    if not rfp:
+        raise HTTPException(status_code=404, detail="RFP not found.")
+    if not rfp.message:
+        rfp.message = []
+    rfp.message.append({
+        "employee": message,
+    })
+    db.add(rfp)
+    db.commit()
+    db.refresh(rfp)
+    return {"message": "Message added to RFP by employee.", "messages": rfp.message}

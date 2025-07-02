@@ -273,7 +273,7 @@ def get_company_responses(user_id: int, db: Session = Depends(get_db)):
     try:
         # Find all RFPs uploaded by this user
         rfps = db.query(RFP).filter(RFP.uploaded_by == user_id).all()
-        rfp_ids = [rfp.id for rfp in rfps]
+        rfp_ids = [rfp.id for rfp in rfps if rfp.status == "finished" or rfp.status == "pending"]
         if not rfp_ids:
             return {"responses": []}
         # Find all company responses for these RFPs
@@ -364,6 +364,6 @@ def accept_rfp_review(rfp_id: int, db: Session = Depends(get_db)):
     rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
     if not rfp:
         raise HTTPException(status_code=404, detail="RFP not found")
-    rfp.status = "accepted"
+    rfp.status = "finished"
     db.commit()
     return {"message": "RFP accepted and now visible to user."}

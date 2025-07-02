@@ -20,6 +20,7 @@ import {
   Zap,
   Activity, // Added for loading indicator
   AlertCircle, // Added for error indicator
+  Mail, // Added for messages icon
 } from "lucide-react"
 import RFPUpload from "@/components/rfp-upload"
 import CompanyDocsUpload from "@/components/company-docs-upload"
@@ -29,6 +30,8 @@ import FinalProposal from "@/components/final-proposal"
 import { Alert, AlertDescription } from "@/components/ui/alert" // Added for Alert component
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useRouter } from "next/navigation"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import RFPMessagePage from "@/components/rfp-messages-page" // Import for messages page
 
 interface EmployeeDashboardProps {
   user: {
@@ -36,7 +39,7 @@ interface EmployeeDashboardProps {
     email: string;
     role: "employee";
     name: string;
-    company?: string;
+    company: string;
   }
   onLogout: () => void
   token: string | null; // Consistent type: string or null
@@ -103,6 +106,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const [pendingRfpId, setPendingRfpId] = useState<number | null>(null);
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const [selectedFileUrlForPreview, setSelectedFileUrlForPreview] = useState<string | null>(null);
+  const [selectedRfpId, setSelectedRfpId] = useState<number | null>(null); // New state for selected RFP ID
 
 
   const router = useRouter();
@@ -115,6 +119,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     { id: "final", label: "Final Proposal", icon: Download },
     { id: "my-rfps", label: "My RFPs", icon: FileText },
     { id: "history", label: "History", icon: History },
+    { id: "messages", label: "Messages", icon: Mail }, // Add this line for sidebar
   ]
 
   const handleRFPUpload = (data: RFPData) => {
@@ -611,15 +616,70 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                                     <Download className="h-4 w-4 mr-1" /> Download PDF
                                   </Button>
                                 )}
-                                {/* Mark as Completed Button */}
+  
+                                
+
+                                {/* Send Message Button */}
+                                <Dialog>
+                                  
+                                  <DialogContent className="sm:max-w-md rounded-2xl">
+                                    <DialogHeader>
+                                      <DialogTitle>Send Message to Admin</DialogTitle>
+                                      <DialogDescription>Enter a message for this RFP. It will be stored in the RFP's message history.</DialogDescription>
+                                    </DialogHeader>
+                                    <form
+                                      onSubmit={async (e) => {
+                                        e.preventDefault();
+                                        const form = e.target as HTMLFormElement;
+                                        const messageInput = form.elements.namedItem("message") as HTMLInputElement;
+                                        const message = messageInput.value;
+                                        setLoading(true);
+                                        setError(null);
+                                        setSuccess(null);
+                                        try {
+                                          const response = await fetch(`http://localhost:8000/api/employee/rfps/${rfp.id}/message`, {
+                                            method: "POST",
+                                            headers: {
+                                              "Content-Type": "application/json",
+                                              "Authorization": `Bearer ${token}`,
+                                            },
+                                            body: JSON.stringify({ message }),
+                                          });
+                                          if (!response.ok) {
+                                            const errorData = await response.json();
+                                            throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                                          }
+                                          setSuccess("Message sent and stored successfully!");
+                                        } catch (err: any) {
+                                          setError(`Failed to send message: ${err.message}`);
+                                        } finally {
+                                          setLoading(false);
+                                        }
+                                      }}
+                                      className="space-y-4"
+                                    >
+                                      <label htmlFor="message">Message</label>
+                                      <input id="message" name="message" required className="rounded-xl border border-gray-300 px-3 py-2 w-full" />
+                                      <DialogFooter>
+                                        <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
+                                          Send
+                                        </Button>
+                                      </DialogFooter>
+                                    </form>
+                                  </DialogContent>
+                                </Dialog>
+
+                                {/* Messages Button - New button to open messages */}
                                 <Button
-                                  variant="default"
+                                  variant="outline"
                                   size="sm"
-                                  className="bg-green-600 hover:bg-green-700 text-white rounded-lg"
-                                  onClick={() => handleMarkAsCompleted(rfp.id)}
-                                  disabled={rfp.status === "completed"}
+                                  className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg"
+                                  onClick={() => {
+                                    setSelectedRfpId(rfp.id);
+                                    setActiveSection("messages");
+                                  }}
                                 >
-                                  <CheckCircle className="h-4 w-4 mr-1" /> {rfp.status === "completed" ? "Completed" : "Mark as Completed"}
+                                  <Mail className="h-4 w-4 mr-1" /> Messages
                                 </Button>
                               </TableCell>
                             </TableRow>
@@ -669,6 +729,11 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 </div>
               )
 
+            case "messages":
+              return (
+                <RFPMessagePage user={{ id: user.id, role: user.role, token: token || '' }} rfpId={selectedRfpId || assignedRfps[0]?.id || 0} isAdmin={user.role === 'employee'} />
+              )
+
             default:
               return null
           }
@@ -690,7 +755,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
             </div>
             <div>
               <h1 className="text-lg font-bold text-gray-900">RFP Pro</h1>
-              <p className="text-xs text-gray-500">Employee Portal</p>
+              <p className="text-xs text-gray-500">{user.company || "Employee Portal"}</p>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(false)} className="lg:hidden">
