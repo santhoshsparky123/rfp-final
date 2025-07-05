@@ -1,4 +1,4 @@
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request, HTTPException
 import google.generativeai as genai
 from docx import Document
 from datetime import datetime
@@ -16,8 +16,10 @@ app = FastAPI()
 # Define API router
 router = APIRouter(prefix="/api", tags=["RFP"])
 
-@router.post("/final-rfp", response_model=dict)
-def final_rfp(rfp_data: dict,
+
+
+@router.post("/going_to_edit", response_model=dict) #changes
+def going_to_edit(rfp_data: dict,
     # current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.EMPLOYEE])),
     db: Session = Depends(get_db)
 ):
@@ -29,16 +31,7 @@ def final_rfp(rfp_data: dict,
     rfp_id = rfp_data.get("rfp_id")
     employee_id = rfp_data.get("employee_id")
     print("id apro")
-    # if not company_id:
-    #     return {"error": "company ID is required"}
-    # print("company kadachuchu")
-    # if not rfp_id:
-    #     return {"error": "rfp_id not found"}
-    # print("rfp kadachuchu")
-    # if not employee_id:
-    #     return {"error": "employee_id is not found"}
-    # print("employee kadachuchu")
-    # Generate content using Gemini
+    print(employee_id)
     llm = genai.GenerativeModel("gemini-1.5-flash")
     prompt = llm.generate_content(
         f"""
@@ -57,37 +50,39 @@ def final_rfp(rfp_data: dict,
     final_proposal_markdown = prompt.text
     print(final_proposal_markdown)# or .content if that's the correct attribute
     print(company_id)
-    company = db.query(Company).filter(Company.id==company_id).first()
-    print(company_id)
-    print(company.subdomain)
-    if not company:
-        return {"error":"company_id not found"}
-    subdomain = company.subdomain
-    # Generate Word and PDF documents from proposal
-    print("hi")
-    file_paths = generate_and_upload_proposal(company_id, {
-        "title": "RFP Response",
-        "final_proposal": final_proposal_markdown
-    },subdomain)
-    docx_url = file_paths.get("docx_url")
-    pdf_url = file_paths.get("pdf_url")
-    print(docx_url)
-    print(pdf_url)
-    rfp = db.query(RFP).filter(RFP.id==rfp_id).first()
-    rfp.status = "review pending"
-    rfp.docx_url = docx_url
-    rfp.pdf_url = pdf_url
-    db.commit()
-    
-    # employee = db.query(Employee).filter(Employee.id==employee_id).first()
-    # if(rfp_id in employee.rfps_assigned):
-    #     employee.rfps_finished = employee.rfps_finished if employee.rfps_finished else []
-    #     employee.rfps_finished.append(rfp_id)
-    #     employee.rfps_assigned.remove(rfp_id)
+    # company = db.query(Company).filter(Company.id==company_id).first()
+    # print(company_id)
+    # print(company.subdomain)
+    # if not company:
+    #     return {"error":"company_id not found"}
+    # subdomain = company.subdomain
+    # # Generate Word and PDF documents from proposal
+    # print("hi")
+    # file_paths = generate_and_upload_proposal(company_id, {
+    #     "title": "RFP Response",
+    #     "final_proposal": final_proposal_markdown
+    # },subdomain)
+    # docx_url = file_paths.get("docx_url")
+    # pdf_url = file_paths.get("pdf_url")
+    # print(docx_url)
+    # print(pdf_url)
+    # rfp = db.query(RFP).filter(RFP.id==rfp_id).first()
+    # rfp.status = "review pending"
+    # if not rfp.docx_url:
+    #     rfp.docx_url = docx_url
+    # else:
+    #     temp = rfp.docx_url
+    #     rfp.docx_url = docx_url
+    #     delete_s3_file(temp)
+    # if not rfp.pdf_url:
+    #     rfp.pdf_url = pdf_url
+    # else:
+    #     temp = rfp.docx_url
+    #     rfp.pdf_url = pdf_url
+    #     delete_s3_file(temp)
     # db.commit()
-    # db.refresh(employee)
-    # employee = db.query(Employee).filter(Employee.id==employee_id)
-    return file_paths
+    # return file_paths
+    return {"prompt": prompt.text}
 
 
 @router.post("/final-rfp/status", response_model=dict)
@@ -104,86 +99,86 @@ async def final_rfp_status(request: Request, db: Session = Depends(get_db)):
         "pdf_url": rfp.pdf_url
     }
 
-import boto3
-import os
-from io import BytesIO
-from datetime import datetime
-from docx import Document
-from docx2pdf import convert  # Only works on Windows with MS Word installed
-import tempfile
-import uuid
+# import boto3
+# import os
+# from io import BytesIO
+# from datetime import datetime
+# from docx import Document
+# from docx2pdf import convert  # Only works on Windows with MS Word installed
+# import tempfile
+# import uuid
 
-def generate_and_upload_proposal(company_id, responses,subdomain):
-    # Setup document
-    doc = Document()
-    title = responses.get("title", "RFP Response")
-    doc.add_heading(title, 0)
-    doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d')}\n")
+# def generate_and_upload_proposal(company_id, responses,subdomain):
+#     # Setup document
+#     doc = Document()
+#     title = responses.get("title", "RFP Response")
+#     doc.add_heading(title, 0)
+#     doc.add_paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d')}\n")
 
-    if final_proposal := responses.get("final_proposal", ""):
-        sections = final_proposal.split("## ")
-        for i, section in enumerate(sections):
-            if i == 0 and not section.startswith("#"):
-                doc.add_paragraph(section)
-                continue
-            lines = section.split("\n", 1)
-            heading = lines[0].strip()
-            doc.add_heading(heading, level=2)
-            if len(lines) > 1:
-                for para in lines[1].split("\n\n"):
-                    para = para.strip()
-                    if para.startswith("- "):
-                        for item in para.split("- "):
-                            if item.strip():
-                                doc.add_paragraph(item.strip(), style='List Bullet')
-                    elif para:
-                        doc.add_paragraph(para)
-    else:
-        for q_id, response in responses.items():
-            if q_id not in ["final_proposal", "title"]:
-                doc.add_heading(f"Question {q_id}", level=2)
-                doc.add_paragraph(response)
+#     if final_proposal := responses.get("final_proposal", ""):
+#         sections = final_proposal.split("## ")
+#         for i, section in enumerate(sections):
+#             if i == 0 and not section.startswith("#"):
+#                 doc.add_paragraph(section)
+#                 continue
+#             lines = section.split("\n", 1)
+#             heading = lines[0].strip()
+#             doc.add_heading(heading, level=2)
+#             if len(lines) > 1:
+#                 for para in lines[1].split("\n\n"):
+#                     para = para.strip()
+#                     if para.startswith("- "):
+#                         for item in para.split("- "):
+#                             if item.strip():
+#                                 doc.add_paragraph(item.strip(), style='List Bullet')
+#                     elif para:
+#                         doc.add_paragraph(para)
+#     else:
+#         for q_id, response in responses.items():
+#             if q_id not in ["final_proposal", "title"]:
+#                 doc.add_heading(f"Question {q_id}", level=2)
+#                 doc.add_paragraph(response)
 
-    # Save .docx to temp
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    filename_base = f"{title.replace(' ', '_')}_{timestamp}"
-    with tempfile.TemporaryDirectory() as tmpdir:
-        docx_path = os.path.join(tmpdir, f"{filename_base}.docx")
-        pdf_path = os.path.join(tmpdir, f"{filename_base}.pdf")
-        doc.save(docx_path)
+#     # Save .docx to temp
+#     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+#     filename_base = f"{title.replace(' ', '_')}_{timestamp}"
+#     with tempfile.TemporaryDirectory() as tmpdir:
+#         docx_path = os.path.join(tmpdir, f"{filename_base}.docx")
+#         pdf_path = os.path.join(tmpdir, f"{filename_base}.pdf")
+#         doc.save(docx_path)
 
-        # Convert to PDF
-        convert(docx_path, pdf_path)
+#         # Convert to PDF
+#         convert(docx_path, pdf_path)
 
-        AWS_ACCESS_KEY_ID = os.getenv("ACCESS_KEY_AWS")
-        AWS_SECRET_ACCESS_KEY = os.getenv("SECRET_KEY_AWS")
-        BUCKET_NAME = "rfp-storage-bucket"
-        REGION = "us-east-1"  # use your S3 bucket region
-        # Upload both files to S3
-        s3 = boto3.client(
-            "s3",
-            region_name=REGION,
-            aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY
-        )
+#         AWS_ACCESS_KEY_ID = os.getenv("ACCESS_KEY_AWS")
+#         AWS_SECRET_ACCESS_KEY = os.getenv("SECRET_KEY_AWS")
+#         BUCKET_NAME = "rfp-storage-bucket"
+#         REGION = "us-east-1"  # use your S3 bucket region
+#         # Upload both files to S3
+#         s3 = boto3.client(
+#             "s3",
+#             region_name=REGION,
+#             aws_access_key_id=AWS_ACCESS_KEY_ID,
+#             aws_secret_access_key=AWS_SECRET_ACCESS_KEY
+#         )
         
-        docx_key = f"proposals/{uuid.uuid4()}.{subdomain}.docx"
-        pdf_key = f"proposals/{uuid.uuid4()}.{subdomain}.pdf"
+#         docx_key = f"proposals/{uuid.uuid4()}.{subdomain}.docx"
+#         pdf_key = f"proposals/{uuid.uuid4()}.{subdomain}.pdf"
 
-        with open(docx_path, "rb") as docx_file:
-            s3.upload_fileobj(docx_file, BUCKET_NAME, docx_key, ExtraArgs={"ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document","ContentDisposition": "inline"}
+#         with open(docx_path, "rb") as docx_file:
+#             s3.upload_fileobj(docx_file, BUCKET_NAME, docx_key, ExtraArgs={"ContentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document","ContentDisposition": "inline"}
             
-        ) #multipart-data
+#         ) #multipart-data
 
-        with open(pdf_path, "rb") as pdf_file:
-            s3.upload_fileobj(pdf_file, BUCKET_NAME, pdf_key, ExtraArgs={"ContentType": "application/pdf"})
+#         with open(pdf_path, "rb") as pdf_file:
+#             s3.upload_fileobj(pdf_file, BUCKET_NAME, pdf_key, ExtraArgs={"ContentType": "application/pdf"})
 
-        docx_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{docx_key}"
-        pdf_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{pdf_key}"
+#         docx_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{docx_key}"
+#         pdf_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{pdf_key}"
 
-    return {
-        "status": "success",
-        "docx_url": docx_url,
-        "pdf_url": pdf_url
-    }
+#     return {
+#         "status": "success",
+#         "docx_url": docx_url,
+#         "pdf_url": pdf_url
+#     }
 

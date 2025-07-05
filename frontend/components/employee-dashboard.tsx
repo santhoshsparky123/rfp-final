@@ -103,6 +103,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const [pendingRfpId, setPendingRfpId] = useState<number | null>(null);
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const [selectedFileUrlForPreview, setSelectedFileUrlForPreview] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string>(user.company || "");
+
 
 
   const router = useRouter();
@@ -160,7 +162,26 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
       fetchCompletedRfps();
     }
   }, [activeSection, token]);
-
+  useEffect(() => {
+    async function fetchCompanyName() {
+      if (user.id && token) {
+        try {
+          const res = await fetch(`http://localhost:8000/api/employee/company_name/${user.id}`, {
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`,
+            },
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data && data.company_name) setCompanyName(data.company_name);
+        } catch (e) {
+          // fallback: do nothing
+        }
+      }
+    }
+    fetchCompanyName();
+  }, [user.id, token]);
 
   const fetchAssignedRfps = async () => {
     setLoading(true)
@@ -689,7 +710,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
               <Brain className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">RFP Pro</h1>
+              <h1 className="text-lg font-bold text-gray-900">{companyName || "Company"}</h1>
               <p className="text-xs text-gray-500">Employee Portal</p>
             </div>
           </div>

@@ -85,25 +85,14 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    
     user = db.query(User).filter(User.username == username).first()
     if user is None:
         raise credentials_exception
-    
-    # Check if user's company subscription is active (for non-super-admin users)
-    # if user.role != UserRole.SUPER_ADMIN and user.company_id:
-    #     company = db.query(Company).filter(Company.id == user.company_id).first()
-    #     if not company or company.subscription_status != SubscriptionStatus.ACTIVE:
-    #         raise HTTPException(
-    #             status_code=status.HTTP_403_FORBIDDEN,
-    #             detail="Company subscription expired or inactive"
-    #         )
-    
-    return user.role
+    return user  # <-- return the user object, not user.role
 
 def require_role(required_roles: List[UserRole]):
     def role_checker(current_user: User = Depends(get_current_user)):
-        if current_user.role not in required_roles:
+        if current_user is None or current_user.role not in required_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions"
