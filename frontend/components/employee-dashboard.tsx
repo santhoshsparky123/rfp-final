@@ -25,13 +25,14 @@ import {
 import RFPUpload from "@/components/rfp-upload"
 import CompanyDocsUpload from "@/components/company-docs-upload"
 import ResponseGeneration from "@/components/response-generation"
-import ProposalEditor from "@/components/proposal-editor"
+import RFPProposalEdit from "@/components/rfp-proposal-edit" // Use new robust editor
 import FinalProposal from "@/components/final-proposal"
 import { Alert, AlertDescription } from "@/components/ui/alert" // Added for Alert component
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import RFPMessagePage from "@/components/rfp-messages-page" // Import for messages page
+import ProposalEditor from "@/components/proposal-editor" // Import ProposalEditor component
 
 interface EmployeeDashboardProps {
   user: {
@@ -107,13 +108,14 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const [selectedFileUrlForPreview, setSelectedFileUrlForPreview] = useState<string | null>(null);
   const [selectedRfpId, setSelectedRfpId] = useState<number | null>(null); // New state for selected RFP ID
+  const [editRfpId, setEditRfpId] = useState<number | null>(null); // New state for editing RFP ID
+  const [editModeFromGenerated, setEditModeFromGenerated] = useState<boolean>(false); // NEW STATE: To differentiate edit source
 
 
   const router = useRouter();
 
   const sidebarItems = [
     { id: "dashboard", label: "Dashboard", icon: Home },
-    { id: "docs", label: "Company Docs", icon: FileText },
     { id: "generate", label: "Generate Response", icon: Brain },
     { id: "edit", label: "Review & Edit", icon: Edit },
     { id: "final", label: "Final Proposal", icon: Download },
@@ -135,6 +137,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
 
   const handleResponseGenerated = (response: GeneratedResponse) => {
     setGeneratedResponse(response)
+    setEditModeFromGenerated(true); // Set to true when coming from generate response
     setActiveSection("edit")
   }
 
@@ -216,7 +219,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   }
 
-  // Fetch only filenames for completed RFPs
+  // Fetch completed RFPs when navigating to the History section
   const fetchCompletedRfps = async () => {
     setLoading(true);
     setError(null);
@@ -494,14 +497,34 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 />
               )
 
-            case "docs":
-              return <CompanyDocsUpload onUploadSuccess={handleCompanyDocsUpload} existingDocsStatus={companyDocsStatus} />
 
             case "generate":
               return <ResponseGeneration rfpData={rfpData} onResponseGenerated={handleResponseGenerated} />
 
+            // ... inside renderContent, case "edit":
             case "edit":
-              return <ProposalEditor generatedResponse={generatedResponse} onResponseEdited={handleResponseEdited} />
+              return (
+                  editRfpId !== null && ( // Ensure an RFP ID is set for editing
+                      editModeFromGenerated ? ( // Check the new state variable
+                          // Render ProposalEditor if coming from "Generate Response" and generatedResponse is present
+                          generatedResponse && String(generatedResponse.rfp_id) === String(editRfpId) && (
+                              <ProposalEditor
+                                  generatedResponse={generatedResponse}
+                                  onResponseEdited={handleResponseEdited}
+                              />
+                          )
+                      ) : (
+                          // Render RFPProposalEdit if coming from "My RFPs" edit button
+                          <RFPProposalEdit
+                              rfpId={editRfpId}
+                              token={token || ''}
+                              pdfUrl={selectedFileUrlForPreview || ''} // Use selectedFileUrlForPreview
+                              onFinal={handleFinalProposal}
+                              filename={selectedFilename || `RFP_${editRfpId}.pdf`} // Pass selectedFilename or a default
+                          />
+                      )
+                  )
+              )
 
             case "final":
               return <FinalProposal editedResponse={editedResponse} onProposalGenerated={handleFinalProposal} />
@@ -681,6 +704,23 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                                 >
                                   <Mail className="h-4 w-4 mr-1" /> Messages
                                 </Button>
+                                {/* Edit Button - opens Review & Edit section for this RFP */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-yellow-600 border-yellow-600 hover:bg-yellow-50 rounded-lg mr-2"
+                                  onClick={() => {
+                                    setEditRfpId(rfp.id);
+                                    // setSelectedFileUrlForPreview(rfp.file_url); // Pass the RFP's file_url
+                                    // setSelectedFilename(rfp.filename); // Pass the RFP's filename
+                                    // setGeneratedResponse(null); // Clear any previous generated response
+                                    setEditedResponse(null); // Clear any previous edited response
+                                    setEditModeFromGenerated(false); // Set to false when coming from "My RFPs"
+                                    setActiveSection("edit");
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4 mr-1" /> Edit
+                                </Button>
                               </TableCell>
                             </TableRow>
                           ))
@@ -835,13 +875,12 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 </h1>
                 <p className="text-sm text-gray-500">
                   {activeSection === "dashboard" && "Overview of your RFP processing workflow"}
-                  {activeSection === "docs" && "Manage company documentation"}
                   {activeSection === "generate" && "Generate AI-powered responses"}
                   {activeSection === "edit" && "Review and edit generated responses"}
                   {activeSection === "final" && "Finalize and download proposals"}
                   {activeSection === "my-rfps" && "View RFPs assigned to you"}
                   {activeSection === "history" && "View past RFP processing activities"}
-                  {activeSection === "settings" && "Manage your account settings"}
+                  {activeSection === "Messages" && "View messages from Company Admin"}
                 </p>
               </div>
             </div>

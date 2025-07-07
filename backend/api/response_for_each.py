@@ -90,10 +90,18 @@ async def generate_response(
             })
             # await asyncio.sleep(5)
 
-        for question in questions:
+        for idx, question in enumerate(questions):
             print(f"Processing question: {question}")
             query = f"Answer this RFP question based on our docs: {question.get('title', '')} - {question.get('content', '')}"
-            answer = agent_executor.run(query)
+            try:
+                answer = await asyncio.wait_for(
+                    asyncio.to_thread(agent_executor.run, query),
+                    timeout=30  # seconds
+                )
+            except asyncio.TimeoutError:
+                answer = "LLM timed out while answering this question."
+            except Exception as e:
+                answer = f"Error occurred: {str(e)}"
 
             final_output["questions"].append({
                 "id": question["id"],
@@ -105,7 +113,8 @@ async def generate_response(
                 "word_limit": question["word_limit"],
                 "related_requirements": question["related_requirements"],
             })
-            # await asyncio.sleep(5)
+            # Stop after the first question
+            break
 
         for req in requirements:
             print(f"Processing requirement: {req}")
