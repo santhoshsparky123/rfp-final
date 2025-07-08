@@ -176,6 +176,18 @@ async def final_rfp_status(request: Request, db: Session = Depends(get_db)):
 #         docx_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{docx_key}"
 #         pdf_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{pdf_key}"
 
+#         with open(pdf_path, "rb") as pdf_file:
+#             s3.upload_fileobj(pdf_file, BUCKET_NAME, pdf_key, ExtraArgs={"ContentType": "application/pdf"})
+
+#         docx_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{docx_key}"
+#         pdf_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{pdf_key}"
+
+#     return {
+#         "status": "success",
+#         "docx_url": docx_url,
+#         "pdf_url": pdf_url
+#     }
+
 #     return {
 #         "status": "success",
 #         "docx_url": docx_url,

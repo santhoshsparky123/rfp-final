@@ -185,6 +185,12 @@ def ok(
     
     company = db.query(Company).filter(Company.id==rfp.company_id).first()
     print(company)
+=======
+    filename: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    rfp = db.query(RFP).filter(RFP.filename==filename).first()
+    company = db.query(Company).filter(Company.id==rfp.company_id).first()
     print(company.subdomain)
     if not company:
         return {"error":"company_id not found"}

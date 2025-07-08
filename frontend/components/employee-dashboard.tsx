@@ -110,6 +110,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const [selectedRfpId, setSelectedRfpId] = useState<number | null>(null); // New state for selected RFP ID
   const [editRfpId, setEditRfpId] = useState<number | null>(null); // New state for editing RFP ID
   const [editModeFromGenerated, setEditModeFromGenerated] = useState<boolean>(false); // NEW STATE: To differentiate edit source
+  const [companyName, setCompanyName] = useState<string>(user.company || "");
 
 
   const router = useRouter();
@@ -168,7 +169,26 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
       fetchCompletedRfps();
     }
   }, [activeSection, token]);
-
+  useEffect(() => {
+    async function fetchCompanyName() {
+      if (user.id && token) {
+        try {
+          const res = await fetch(`http://localhost:8000/api/employee/company_name/${user.id}`, {
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`,
+            },
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data && data.company_name) setCompanyName(data.company_name);
+        } catch (e) {
+          // fallback: do nothing
+        }
+      }
+    }
+    fetchCompanyName();
+  }, [user.id, token]);
 
   const fetchAssignedRfps = async () => {
     setLoading(true)
@@ -796,6 +816,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
             <div>
               <h1 className="text-lg font-bold text-gray-900">RFP Pro</h1>
               <p className="text-xs text-gray-500">{user.company || "Employee Portal"}</p>
+              <h1 className="text-lg font-bold text-gray-900">{companyName || "Company"}</h1>
+        <p className="text-xs text-gray-500">Employee Portal</p>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(false)} className="lg:hidden">
