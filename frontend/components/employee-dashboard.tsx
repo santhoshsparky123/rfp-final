@@ -20,15 +20,19 @@ import {
   Zap,
   Activity, // Added for loading indicator
   AlertCircle, // Added for error indicator
+  Mail, // Added for messages icon
 } from "lucide-react"
 import RFPUpload from "@/components/rfp-upload"
 import CompanyDocsUpload from "@/components/company-docs-upload"
 import ResponseGeneration from "@/components/response-generation"
-import ProposalEditor from "@/components/proposal-editor"
+import RFPProposalEdit from "@/components/rfp-proposal-edit" // Use new robust editor
 import FinalProposal from "@/components/final-proposal"
 import { Alert, AlertDescription } from "@/components/ui/alert" // Added for Alert component
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useRouter } from "next/navigation"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import RFPMessagePage from "@/components/rfp-messages-page" // Import for messages page
+import ProposalEditor from "@/components/proposal-editor" // Import ProposalEditor component
 
 interface EmployeeDashboardProps {
   user: {
@@ -36,7 +40,7 @@ interface EmployeeDashboardProps {
     email: string;
     role: "employee";
     name: string;
-    company?: string;
+    company: string;
   }
   onLogout: () => void
   token: string | null; // Consistent type: string or null
@@ -103,20 +107,22 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const [pendingRfpId, setPendingRfpId] = useState<number | null>(null);
   const [selectedFilename, setSelectedFilename] = useState<string | null>(null);
   const [selectedFileUrlForPreview, setSelectedFileUrlForPreview] = useState<string | null>(null);
+  const [selectedRfpId, setSelectedRfpId] = useState<number | null>(null); // New state for selected RFP ID
+  const [editRfpId, setEditRfpId] = useState<number | null>(null); // New state for editing RFP ID
+  const [editModeFromGenerated, setEditModeFromGenerated] = useState<boolean>(false); // NEW STATE: To differentiate edit source
   const [companyName, setCompanyName] = useState<string>(user.company || "");
-
 
 
   const router = useRouter();
 
   const sidebarItems = [
     { id: "dashboard", label: "Dashboard", icon: Home },
-    { id: "docs", label: "Company Docs", icon: FileText },
     { id: "generate", label: "Generate Response", icon: Brain },
     { id: "edit", label: "Review & Edit", icon: Edit },
     { id: "final", label: "Final Proposal", icon: Download },
     { id: "my-rfps", label: "My RFPs", icon: FileText },
     { id: "history", label: "History", icon: History },
+    { id: "messages", label: "Messages", icon: Mail }, // Add this line for sidebar
   ]
 
   const handleRFPUpload = (data: RFPData) => {
@@ -132,6 +138,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
 
   const handleResponseGenerated = (response: GeneratedResponse) => {
     setGeneratedResponse(response)
+    setEditModeFromGenerated(true); // Set to true when coming from generate response
     setActiveSection("edit")
   }
 
@@ -232,7 +239,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   }
 
-  // Fetch only filenames for completed RFPs
+  // Fetch completed RFPs when navigating to the History section
   const fetchCompletedRfps = async () => {
     setLoading(true);
     setError(null);
@@ -510,14 +517,34 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 />
               )
 
-            case "docs":
-              return <CompanyDocsUpload onUploadSuccess={handleCompanyDocsUpload} existingDocsStatus={companyDocsStatus} />
 
             case "generate":
               return <ResponseGeneration rfpData={rfpData} onResponseGenerated={handleResponseGenerated} />
 
+            // ... inside renderContent, case "edit":
             case "edit":
-              return <ProposalEditor generatedResponse={generatedResponse} onResponseEdited={handleResponseEdited} />
+              return (
+                  editRfpId !== null && ( // Ensure an RFP ID is set for editing
+                      editModeFromGenerated ? ( // Check the new state variable
+                          // Render ProposalEditor if coming from "Generate Response" and generatedResponse is present
+                          generatedResponse && String(generatedResponse.rfp_id) === String(editRfpId) && (
+                              <ProposalEditor
+                                  generatedResponse={generatedResponse}
+                                  onResponseEdited={handleResponseEdited}
+                              />
+                          )
+                      ) : (
+                          // Render RFPProposalEdit if coming from "My RFPs" edit button
+                          <RFPProposalEdit
+                              rfpId={editRfpId}
+                              token={token || ''}
+                              pdfUrl={selectedFileUrlForPreview || ''} // Use selectedFileUrlForPreview
+                              onFinal={handleFinalProposal}
+                              filename={selectedFilename || `RFP_${editRfpId}.pdf`} // Pass selectedFilename or a default
+                          />
+                      )
+                  )
+              )
 
             case "final":
               return <FinalProposal editedResponse={editedResponse} onProposalGenerated={handleFinalProposal} />
@@ -632,15 +659,87 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                                     <Download className="h-4 w-4 mr-1" /> Download PDF
                                   </Button>
                                 )}
-                                {/* Mark as Completed Button */}
+  
+                                
+
+                                {/* Send Message Button */}
+                                <Dialog>
+                                  
+                                  <DialogContent className="sm:max-w-md rounded-2xl">
+                                    <DialogHeader>
+                                      <DialogTitle>Send Message to Admin</DialogTitle>
+                                      <DialogDescription>Enter a message for this RFP. It will be stored in the RFP's message history.</DialogDescription>
+                                    </DialogHeader>
+                                    <form
+                                      onSubmit={async (e) => {
+                                        e.preventDefault();
+                                        const form = e.target as HTMLFormElement;
+                                        const messageInput = form.elements.namedItem("message") as HTMLInputElement;
+                                        const message = messageInput.value;
+                                        setLoading(true);
+                                        setError(null);
+                                        setSuccess(null);
+                                        try {
+                                          const response = await fetch(`http://localhost:8000/api/employee/rfps/${rfp.id}/message`, {
+                                            method: "POST",
+                                            headers: {
+                                              "Content-Type": "application/json",
+                                              "Authorization": `Bearer ${token}`,
+                                            },
+                                            body: JSON.stringify({ message }),
+                                          });
+                                          if (!response.ok) {
+                                            const errorData = await response.json();
+                                            throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                                          }
+                                          setSuccess("Message sent and stored successfully!");
+                                        } catch (err: any) {
+                                          setError(`Failed to send message: ${err.message}`);
+                                        } finally {
+                                          setLoading(false);
+                                        }
+                                      }}
+                                      className="space-y-4"
+                                    >
+                                      <label htmlFor="message">Message</label>
+                                      <input id="message" name="message" required className="rounded-xl border border-gray-300 px-3 py-2 w-full" />
+                                      <DialogFooter>
+                                        <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
+                                          Send
+                                        </Button>
+                                      </DialogFooter>
+                                    </form>
+                                  </DialogContent>
+                                </Dialog>
+
+                                {/* Messages Button - New button to open messages */}
                                 <Button
-                                  variant="default"
+                                  variant="outline"
                                   size="sm"
-                                  className="bg-green-600 hover:bg-green-700 text-white rounded-lg"
-                                  onClick={() => handleMarkAsCompleted(rfp.id)}
-                                  disabled={rfp.status === "completed"}
+                                  className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg"
+                                  onClick={() => {
+                                    setSelectedRfpId(rfp.id);
+                                    setActiveSection("messages");
+                                  }}
                                 >
-                                  <CheckCircle className="h-4 w-4 mr-1" /> {rfp.status === "completed" ? "Completed" : "Mark as Completed"}
+                                  <Mail className="h-4 w-4 mr-1" /> Messages
+                                </Button>
+                                {/* Edit Button - opens Review & Edit section for this RFP */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-yellow-600 border-yellow-600 hover:bg-yellow-50 rounded-lg mr-2"
+                                  onClick={() => {
+                                    setEditRfpId(rfp.id);
+                                    // setSelectedFileUrlForPreview(rfp.file_url); // Pass the RFP's file_url
+                                    // setSelectedFilename(rfp.filename); // Pass the RFP's filename
+                                    // setGeneratedResponse(null); // Clear any previous generated response
+                                    setEditedResponse(null); // Clear any previous edited response
+                                    setEditModeFromGenerated(false); // Set to false when coming from "My RFPs"
+                                    setActiveSection("edit");
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4 mr-1" /> Edit
                                 </Button>
                               </TableCell>
                             </TableRow>
@@ -690,6 +789,11 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 </div>
               )
 
+            case "messages":
+              return (
+                <RFPMessagePage user={{ id: user.id, role: user.role, token: token || '' }} rfpId={selectedRfpId || assignedRfps[0]?.id || 0} isAdmin={user.role === 'employee'} />
+              )
+
             default:
               return null
           }
@@ -710,8 +814,10 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
               <Brain className="w-6 h-6 text-white" />
             </div>
             <div>
+              <h1 className="text-lg font-bold text-gray-900">RFP Pro</h1>
+              <p className="text-xs text-gray-500">{user.company || "Employee Portal"}</p>
               <h1 className="text-lg font-bold text-gray-900">{companyName || "Company"}</h1>
-              <p className="text-xs text-gray-500">Employee Portal</p>
+        <p className="text-xs text-gray-500">Employee Portal</p>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(false)} className="lg:hidden">
@@ -791,13 +897,12 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 </h1>
                 <p className="text-sm text-gray-500">
                   {activeSection === "dashboard" && "Overview of your RFP processing workflow"}
-                  {activeSection === "docs" && "Manage company documentation"}
                   {activeSection === "generate" && "Generate AI-powered responses"}
                   {activeSection === "edit" && "Review and edit generated responses"}
                   {activeSection === "final" && "Finalize and download proposals"}
                   {activeSection === "my-rfps" && "View RFPs assigned to you"}
                   {activeSection === "history" && "View past RFP processing activities"}
-                  {activeSection === "settings" && "Manage your account settings"}
+                  {activeSection === "Messages" && "View messages from Company Admin"}
                 </p>
               </div>
             </div>

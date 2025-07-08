@@ -174,12 +174,23 @@ def delete_s3_file(s3_url: str):
 @router.post("/employee/ok")
 def ok(
     text: str = Form(...),
+    rfp_id:str = Form(...),
+    db: Session = Depends(get_db)
+):
+    print("ok kula iruke")
+    rfp = db.query(RFP).filter(RFP.id==int(rfp_id)).first()
+    print(rfp)
+    if not rfp: # Added check for RFP
+        raise HTTPException(status_code=404, detail="RFP not found")
+    
+    company = db.query(Company).filter(Company.id==rfp.company_id).first()
+    print(company)
+=======
     filename: str = Form(...),
     db: Session = Depends(get_db)
 ):
     rfp = db.query(RFP).filter(RFP.filename==filename).first()
     company = db.query(Company).filter(Company.id==rfp.company_id).first()
-    
     print(company.subdomain)
     if not company:
         return {"error":"company_id not found"}
@@ -363,3 +374,23 @@ def generate_and_upload_proposal(company_id, responses, subdomain):
         "pdf_url": pdf_url
     }
 
+@router.get("/employee/rfps/{rfp_id}/response")
+def get_rfp_response(rfp_id: int, db: Session = Depends(get_db)):
+    rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+    if not rfp:
+        raise HTTPException(status_code=404, detail="RFP not found")
+    # Try to get the generated response (adjust the attribute as per your model)
+    response_data = getattr(rfp, "generated_response", None) or getattr(rfp, "response_json", None)
+    if response_data:
+        # If the response is a stringified JSON, parse it
+        try:
+            import json
+            response_json = json.loads(response_data) if isinstance(response_data, str) else response_data
+            return {"response": response_json}
+        except Exception:
+            return {"response": response_data}
+    # Fallback: return extracted text if available
+    extracted_text = getattr(rfp, "extracted_text", None)
+    if extracted_text:
+        return {"extracted_text": extracted_text}
+    return {"message": "No response or extracted text found for this RFP."}

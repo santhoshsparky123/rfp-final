@@ -79,6 +79,7 @@ class RFP(Base):
     file_url = Column(String)
     docx_url = Column(String)
     pdf_url = Column(String)
+    message = Column(MutableList.as_mutable(JSON), default=list)  # Store messages as a list of dictionaries
 
 
 class Employee(Base):

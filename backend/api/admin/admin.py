@@ -254,7 +254,27 @@ async def add_document(company_id: int = Form(...), file: UploadFile = File(...)
         "characters": len(text)
     }
 
-
-
-
+@router.post("/admin/rfps/{rfp_id}/message")
+async def add_rfp_message(
+    rfp_id: int,
+    payload: dict,
+    db: Session = Depends(get_db)
+):
+    message = payload.get("message")
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required.")
+    rfp = db.query(RFP).filter(RFP.id == rfp_id).first()
+    if not rfp:
+        raise HTTPException(status_code=404, detail="RFP not found.")
+    # Ensure rfp.message is a list
+    if not rfp.message:
+        rfp.message = []
+    rfp.message.append({
+        "admin": message,
+        
+    })
+    db.add(rfp)
+    db.commit()
+    db.refresh(rfp)
+    return {"message": "Message added to RFP.", "messages": rfp.message}
 
