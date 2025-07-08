@@ -32,7 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import RFPMessagePage from "@/components/rfp-messages-page" // Import for messages page
-import ProposalEditor from "@/components/proposal-editor" // Import ProposalEditor component
+
 
 interface EmployeeDashboardProps {
   user: {
@@ -136,10 +136,24 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     setCompanyDocsStatus(status)
   }
 
-  const handleResponseGenerated = (response: GeneratedResponse) => {
-    setGeneratedResponse(response)
-    setEditModeFromGenerated(true); // Set to true when coming from generate response
-    setActiveSection("edit")
+  const handleResponseGenerated = async (response: any) => {
+    // Call /api/going_to_edit with the RFP data and get the proposal markdown
+    try {
+      const res = await fetch("http://localhost:8000/api/going_to_edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(response),
+      });
+      if (!res.ok) throw new Error("Failed to generate proposal draft");
+      const data = await res.json();
+      // data.prompt contains the markdown proposal
+      setGeneratedResponse(data.prompt);
+      setEditRfpId(response.rfp_id); // Set the RFP ID for editing
+      setEditModeFromGenerated(true);
+      setActiveSection("edit");
+    } catch (err) {
+      setError("Failed to generate proposal draft");
+    }
   }
 
   const handleResponseEdited = (editedResponse: GeneratedResponse) => {
@@ -521,29 +535,18 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
             case "generate":
               return <ResponseGeneration rfpData={rfpData} onResponseGenerated={handleResponseGenerated} />
 
-            // ... inside renderContent, case "edit":
             case "edit":
               return (
-                  editRfpId !== null && ( // Ensure an RFP ID is set for editing
-                      editModeFromGenerated ? ( // Check the new state variable
-                          // Render ProposalEditor if coming from "Generate Response" and generatedResponse is present
-                          generatedResponse && String(generatedResponse.rfp_id) === String(editRfpId) && (
-                              <ProposalEditor
-                                  generatedResponse={generatedResponse}
-                                  onResponseEdited={handleResponseEdited}
-                              />
-                          )
-                      ) : (
-                          // Render RFPProposalEdit if coming from "My RFPs" edit button
-                          <RFPProposalEdit
-                              rfpId={editRfpId}
-                              token={token || ''}
-                              pdfUrl={selectedFileUrlForPreview || ''} // Use selectedFileUrlForPreview
-                              onFinal={handleFinalProposal}
-                              filename={selectedFilename || `RFP_${editRfpId}.pdf`} // Pass selectedFilename or a default
-                          />
-                      )
-                  )
+                editRfpId !== null && (
+                  <RFPProposalEdit
+                    rfpId={editRfpId}
+                    token={token || ''}
+                    pdfUrl={selectedFileUrlForPreview || ''}
+                    onFinal={handleFinalProposal}
+                    filename={selectedFilename || `RFP_${editRfpId}.pdf`}
+                    generatedResponse={editModeFromGenerated ? generatedResponse : undefined}
+                  />
+                )
               )
 
             case "final":
@@ -814,8 +817,6 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
               <Brain className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">RFP Pro</h1>
-              <p className="text-xs text-gray-500">{user.company || "Employee Portal"}</p>
               <h1 className="text-lg font-bold text-gray-900">{companyName || "Company"}</h1>
         <p className="text-xs text-gray-500">Employee Portal</p>
             </div>

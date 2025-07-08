@@ -114,21 +114,25 @@ const RFPProposalEdit: React.FC<RFPProposalEditProps> = ({ rfpId, token, pdfUrl,
     setLlmLoading(true);
     setLlmError(null);
     setLlmResult(null);
+
     try {
+      
       const combined = sections.map((s, i) => sectionEdits[i]).join("\n\n");
       // Use customPrompt if provided, otherwise a default instruction
       const promptToSend = customPrompt || "Refine and improve the following text for clarity and conciseness.";
 
-      const res = await fetch(`http://localhost:8000/api/employee/rfps/${rfpId}/custom-prompt-edit`, {
+      const formData = new FormData();
+
+      
+      formData.append('text', combined); // Append the edited text
+      formData.append("changes",promptToSend);
+      console.log(formData.get('text'))
+      const res = await fetch(`http://localhost:8000/api/employee/final_rfp`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          prompt: promptToSend, // Send the custom prompt
-          file_text: combined // Send the content to be edited
-        }),
+        body: formData,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -196,41 +200,37 @@ const RFPProposalEdit: React.FC<RFPProposalEditProps> = ({ rfpId, token, pdfUrl,
         ) : null}
       </div>
       <div>
-        <div className="flex flex-col gap-4">
-          {sections.map((section, idx) => (
-            <div key={idx} className="border rounded p-3 bg-gray-50">
-              <div className="font-semibold mb-1">{section.title || `Section ${idx + 1}`}</div>
-              <textarea
-                className="w-full min-h-[120px] border rounded p-2 text-sm"
-                value={sectionEdits[idx]}
-                onChange={e => handleSectionEdit(idx, e.target.value)}
-                readOnly={mode === 'generated'}
-                style={{ background: mode === 'generated' ? '#f5f5f5' : undefined }}
-              />
-            </div>
-          ))}
+        {/* Show the combined response in a single box */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Response Data</label>
+          <textarea
+            className="w-full min-h-[180px] border rounded p-2 text-sm bg-gray-50 mb-2"
+            value={llmResult || sectionEdits.join("\n\n")}
+            readOnly
+          />
         </div>
-        {/* New: Custom Prompt Input */}
-        <div className="mt-4">
-          <label htmlFor="custom-prompt" className="block text-sm font-medium text-gray-700 mb-1">
-            Custom LLM Instruction:
-          </label>
+        {/* Prompt box and LLM/Update buttons */}
+        <div className="mb-4">
+          <label htmlFor="prompt-box" className="block text-sm font-medium text-gray-700 mb-1">Prompt</label>
           <Input
-            id="custom-prompt"
+            id="prompt-box"
             type="text"
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder="e.g., 'Make it more concise and formal.'"
-            className="w-full"
-            disabled={mode === 'generated'} // Disable if in generated mode
+            placeholder="Enter your prompt here..."
+            className="w-full mb-2"
+            disabled={llmLoading}
           />
+          <div className="flex gap-2">
+            <Button onClick={handleLLM} disabled={llmLoading || !customPrompt}>
+              {llmLoading ? "LLM..." : "LLM"}
+            </Button>
+            <Button onClick={handleFinalProcess} disabled={finalLoading || !!finalError} className="bg-green-600 hover:bg-green-700 text-white rounded-xl">
+              {finalLoading ? "Updating..." : "Update"}
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2 mt-4">
-          <Button onClick={handleSave} disabled={mode === 'generated'}>Save All</Button>
-          <Button onClick={handleLLM} disabled={llmLoading || mode === 'generated'}>
-            {llmLoading ? "LLM Correcting..." : "LLM Correction"}
-          </Button>
-        </div>
+        {/* Error/Result Alerts */}
         {llmError && (
           <Alert variant="destructive" className="mt-2"><AlertDescription>{llmError}</AlertDescription></Alert>
         )}
@@ -238,12 +238,6 @@ const RFPProposalEdit: React.FC<RFPProposalEditProps> = ({ rfpId, token, pdfUrl,
           <Alert className="mt-2"><AlertDescription>{llmResult}</AlertDescription></Alert>
         )}
       </div>
-      <Button className="bg-green-600 hover:bg-green-700 text-white rounded-xl" onClick={handleFinalProcess} disabled={finalLoading || !!finalError}>
-        {finalLoading ? "Processing..." : "Final Process"}
-      </Button>
-      {finalError && (
-        <Alert variant="destructive" className="mt-2"><AlertDescription>{finalError}</AlertDescription></Alert>
-      )}
     </div>
   );
 };
