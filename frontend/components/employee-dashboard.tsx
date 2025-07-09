@@ -76,7 +76,7 @@ interface RFP { // Re-defining RFP interface for clarity in employee dashboard
   id: number
   filename: string
   content_type: string
-  status: "pending" | "in_progress" | "completed" | "assigned" | "pending_review"
+  status: "pending" | "in_progress" | "finished" | "assigned" | "pending_review"
   created_at: string
   file_url: string // Add file_url
   docx_url?: string; // Added for final DOCX download
@@ -96,8 +96,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   const [editedResponse, setEditedResponse] = useState<GeneratedResponse | null>(null)
   const [finalProposalGenerated, setFinalProposalGenerated] = useState(false)
   const [assignedRfps, setAssignedRfps] = useState<RFP[]>([]) // New state for assigned RFPs
-  // Only filename for completed RFPs
-  const [completedRfps, setCompletedRfps] = useState<{ id: number; filename: string }[]>([]); // State for completed RFPs
+  // Only filename for finished RFPs
+  const [finishedRfps, setfinishedRfps] = useState<{ id: number; filename: string }[]>([]); // State for finished RFPs
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -119,7 +119,6 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     { id: "dashboard", label: "Dashboard", icon: Home },
     { id: "generate", label: "Generate Response", icon: Brain },
     { id: "edit", label: "Review & Edit", icon: Edit },
-    { id: "final", label: "Final Proposal", icon: Download },
     { id: "my-rfps", label: "My RFPs", icon: FileText },
     { id: "history", label: "History", icon: History },
     { id: "messages", label: "Messages", icon: Mail }, // Add this line for sidebar
@@ -169,18 +168,18 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     // Only fetch assigned RFPs if token is present and not null
     if (token) {
       fetchAssignedRfps()
-      fetchCompletedRfps();
+      fetchFinishedRfps();
     } else {
       setError("Authentication token is missing. Please log in to view assigned RFPs.");
       setAssignedRfps([]);
-      setCompletedRfps([]);
+      setfinishedRfps([]);
     }
   }, [user.id, token]) // Depend on user.id and token
 
-  // Fetch completed RFPs when navigating to the History section
+  // Fetch finished RFPs when navigating to the History section
   useEffect(() => {
     if (activeSection === "history" && token) {
-      fetchCompletedRfps();
+      fetchFinishedRfps();
     }
   }, [activeSection, token]);
   useEffect(() => {
@@ -253,14 +252,15 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   }
 
-  // Fetch completed RFPs when navigating to the History section
-  const fetchCompletedRfps = async () => {
+  // Fetch finished RFPs when navigating to the History section
+  const fetchFinishedRfps = async () => {
     setLoading(true);
     setError(null);
     try {
       if (!token) {
-        throw new Error("Authentication token is missing. Cannot fetch completed RFPs.");
+        throw new Error("Authentication token is missing. Cannot fetch finished RFPs.");
       }
+      // Use the correct backend endpoint for finished/completed RFPs
       const response = await fetch(`http://localhost:8000/api/employee/completed_rfps/${user.id}`, {
         headers: {
           "Content-Type": "application/json",
@@ -280,8 +280,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
       } else {
         throw new Error("Backend response is not an array or does not contain an 'rfps' array.");
       }
-      // Only set filename for each completed RFP, filter out empty/invalid filenames
-      setCompletedRfps(
+      // Only set filename for each finished RFP, filter out empty/invalid filenames
+      setfinishedRfps(
         fetchedRfps
           .filter((rfp: any) => rfp && typeof rfp.filename === 'string' && rfp.filename.trim() !== '')
           .map((rfp: any, idx: number) => ({
@@ -290,8 +290,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
           }))
       );
     } catch (err: any) {
-      console.error("Error fetching completed RFPs:", err);
-      setError(`Failed to fetch completed RFPs: ${err.message}`);
+      console.error("Error fetching finished RFPs:", err);
+      setError(`Failed to fetch finished RFPs: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -327,14 +327,14 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
     }
   };
 
-  const handleMarkAsCompleted = async (rfpId: number) => {
+  const handleMarkAsfinished = async (rfpId: number) => {
     setLoading(true)
     setError(null)
     setSuccess(null)
 
     try {
       if (!token) {
-        throw new Error("Authentication token is missing. Cannot mark RFP as completed.");
+        throw new Error("Authentication token is missing. Cannot mark RFP as finished.");
       }
       const response = await fetch(`http://localhost:8000/api/rfp/${rfpId}/complete`, {
         method: "PUT",
@@ -356,9 +356,9 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
         )
       )
 
-      setSuccess(`RFP marked as completed and sent for admin review!`);
+      setSuccess(`RFP marked as finished and sent for admin review!`);
     } catch (err: any) {
-      setError(`Failed to mark RFP as completed: ${err.message}`);
+      setError(`Failed to mark RFP as finished: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -387,6 +387,11 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   };
 
   const renderContent = () => {
+    // Filter assignedRfps for My RFPs (status === 'assigned')
+    const myRfps = assignedRfps.filter(rfp => rfp.status === "assigned");
+    // Filter assignedRfps for History (status === 'finished')
+    const finishedRfps = assignedRfps.filter(rfp => rfp.status === "finished");
+
     return (
       <div className="space-y-8">
         {(!token) && ( // Show alert if token is missing (can be null or undefined)
@@ -469,21 +474,21 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                     <CardContent>
                       <div className="space-y-4">
                         {[
-                          { step: "Upload RFP", completed: !!rfpData, icon: Upload },
-                          { step: "Generate Response", completed: !!generatedResponse, icon: Brain },
-                          { step: "Review & Edit", completed: !!editedResponse, icon: Edit },
-                          { step: "Final Proposal", completed: finalProposalGenerated, icon: Download },
+                          { step: "Upload RFP", finished: !!rfpData, icon: Upload },
+                          { step: "Generate Response", finished: !!generatedResponse, icon: Brain },
+                          { step: "Review & Edit", finished: !!editedResponse, icon: Edit },
+                          { step: "Final Proposal", finished: finalProposalGenerated, icon: Download },
                         ].map((item, index) => {
                           const Icon = item.icon
                           return (
                             <div key={item.step} className="flex items-center gap-4 p-3 rounded-lg bg-gray-50">
-                              <div className={`p-2 rounded-lg ${item.completed ? "bg-green-100" : "bg-gray-200"}`}>
-                                <Icon className={`w-5 h-5 ${item.completed ? "text-green-600" : "text-gray-400"}`} />
+                              <div className={`p-2 rounded-lg ${item.finished ? "bg-green-100" : "bg-gray-200"}`}>
+                                <Icon className={`w-5 h-5 ${item.finished ? "text-green-600" : "text-gray-400"}`} />
                               </div>
                               <div className="flex-1">
                                 <div className="font-medium text-gray-900">{item.step}</div>
                               </div>
-                              {item.completed && <CheckCircle className="w-5 h-5 text-green-600" />}
+                              {item.finished && <CheckCircle className="w-5 h-5 text-green-600" />}
                             </div>
                           )
                         })}
@@ -495,7 +500,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                     {[
                       { title: "RFPs Processed", value: "12", icon: FileText, color: "blue" },
                       { title: "Responses Generated", value: "8", icon: Brain, color: "green" },
-                      { title: "Reviews Completed", value: "6", icon: Edit, color: "orange" },
+                      { title: "Reviews finished", value: "6", icon: Edit, color: "orange" },
                       { title: "Final Proposals", value: "5", icon: Download, color: "purple" },
                     ].map((stat) => {
                       const Icon = stat.icon
@@ -591,19 +596,19 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {assignedRfps.length === 0 ? (
+                          {myRfps.length === 0 ? (
                             <TableRow>
                               <TableCell colSpan={5} className="text-center py-4 text-gray-500">
                                 No RFPs assigned to you.
                               </TableCell>
                             </TableRow>
                           ) : (
-                          assignedRfps.map((rfp) => (
+                          myRfps.map((rfp) => (
                             <TableRow key={rfp.id} className="hover:bg-gray-50">
                               <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
                               <TableCell>
                                 <Badge
-                                  variant={rfp.status === "completed" ? "default" : "outline"}
+                                  variant={rfp.status === "finished" ? "default" : "outline"}
                                   className={`rounded-xl ${
                                     rfp.status === "pending"
                                       ? "bg-yellow-100 text-yellow-700"
@@ -640,8 +645,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                                 >
                                   <Upload className="h-4 w-4 mr-1" /> Process
                                 </Button>
-                                {/* Download Word Button (if docx_url exists and status is completed) */}
-                                {rfp.docx_url && rfp.status === "completed" && (
+                                {/* Download Word Button (if docx_url exists and status is finished) */}
+                                {rfp.docx_url && rfp.status === "finished" && (
                                   <Button
                                     variant="default"
                                     size="sm"
@@ -651,8 +656,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                                     <Download className="h-4 w-4 mr-1" /> Download Word
                                   </Button>
                                 )}
-                                {/* Download PDF Button (if pdf_url exists and status is completed) */}
-                                {rfp.pdf_url && rfp.status === "completed" && (
+                                {/* Download PDF Button (if pdf_url exists and status is finished) */}
+                                {rfp.pdf_url && rfp.status === "finished" && (
                                   <Button
                                     variant="default"
                                     size="sm"
@@ -772,19 +777,19 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {completedRfps.length === 0 ? (
+                          {finishedRfps.length === 0 ? (
                             <TableRow>
                               <TableCell colSpan={1} className="text-center py-4 text-gray-500">
-                                No completed RFPs yet.
+                                No finished RFPs yet.
                               </TableCell>
                             </TableRow>
                           ) : (
-                            completedRfps.map((rfp) => (
+                            finishedRfps.map((rfp) => (
                               <TableRow key={rfp.id} className="hover:bg-gray-50">
                                 <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
                               </TableRow>
                             ))
-                          )}
+        )}
                         </TableBody>
                       </Table>
                     </CardContent>
@@ -911,18 +916,18 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
             {/* Progress Indicator */}
             <div className="hidden md:flex items-center gap-2">
               {[
-                { step: "Upload", completed: !!rfpData, icon: Upload },
-                { step: "Generate", completed: !!generatedResponse, icon: Brain },
-                { step: "Edit", completed: !!editedResponse, icon: Edit },
-                { step: "Final", completed: finalProposalGenerated, icon: Download },
+                { step: "Upload", finished: !!rfpData, icon: Upload },
+                { step: "Generate", finished: !!generatedResponse, icon: Brain },
+                { step: "Edit", finished: !!editedResponse, icon: Edit },
+                { step: "Final", finished: finalProposalGenerated, icon: Download },
               ].map((item, index) => {
                 const Icon = item.icon
                 return (
                   <div key={item.step} className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg ${item.completed ? "bg-green-100" : "bg-gray-100"}`}>
-                      <Icon className={`w-4 h-4 ${item.completed ? "text-green-600" : "text-gray-400"}`} />
+                    <div className={`p-1.5 rounded-lg ${item.finished ? "bg-green-100" : "bg-gray-100"}`}>
+                      <Icon className={`w-4 h-4 ${item.finished ? "text-green-600" : "text-gray-400"}`} />
                     </div>
-                    {index < 3 && <div className={`w-8 h-0.5 ${item.completed ? "bg-green-300" : "bg-gray-200"}`} />}
+                    {index < 3 && <div className={`w-8 h-0.5 ${item.finished ? "bg-green-300" : "bg-gray-200"}`} />}
                   </div>
                 )
               })}

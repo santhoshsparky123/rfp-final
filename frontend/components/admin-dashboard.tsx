@@ -57,7 +57,7 @@ interface Worker {
   email: string
   created_at: string
   status: "active" | "inactive"
-  last_login?: string
+  last_login: string
   rfps_processed: number
   current_projects: number
   role: "employee"
@@ -69,7 +69,7 @@ interface RFP {
   id: number
   filename: string
   content_type: string
-  status: "pending" | "in_progress" | "completed" | "assigned" // Explicitly define status types
+  status: "pending" | "review pending" | "in_progress" | "completed" | "assigned" // Explicitly define status types
   uploaded_by: number
   uploaded_by_name: string
   uploaded_by_email: string
@@ -77,7 +77,7 @@ interface RFP {
   assigned_to_worker_id?: string // Optional: To store the ID of the worker it's assigned to
   assigned_to_worker_name?: string // Optional: To store the name of the worker it's assigned to
   file_url: string // <-- Add this line
-  pdf_url?: string // Optional: URL to the PDF proposal document
+  pdf_url: string // Optional: URL to the PDF proposal document
   docx_url?: string // Optional: URL to the DOCX proposal document
 }
 
@@ -264,6 +264,35 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     }
   }, [rfps, fetchUsername, usernames]);
   
+  // Fetch PDF URLs for all RFPs on load or when rfps change
+  useEffect(() => {
+    const fetchAllPdfUrls = async () => {
+      if (rfps.length === 0) return;
+      for (const rfp of rfps) {
+        if (rfp.id && !pdfUrls[rfp.id]) {
+          try {
+            const response = await fetch(`http://localhost:8000/api/pdf/${rfp.id}`, {
+              method: "GET",
+              headers: {
+                "Authorization": `Bearer ${token}`,
+              },
+            });
+            if (response.ok) {
+              const data = await response.json();
+              if (data && data.pdf_url) {
+                setPdfUrls(prev => ({ ...prev, [rfp.id]: data.pdf_url }));
+              }
+            }
+          } catch (e) {
+            // Ignore errors for missing PDFs
+          }
+        }
+      }
+    };
+    fetchAllPdfUrls();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rfps]);
+
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -662,7 +691,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                           </TableCell>
                         </TableRow>
                       ))
-                    )}
+)                    }
                   </TableBody>
                 </Table>
               </CardContent>
@@ -728,7 +757,6 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                       <TableHead>Status</TableHead>
                       <TableHead>Uploaded By</TableHead>
                       <TableHead>Upload Date</TableHead>
-                      <TableHead>Assigned To</TableHead> {/* New column for assigned worker */}
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -762,9 +790,6 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                           </TableCell>
                           <TableCell className="text-gray-700">{usernames[rfp.uploaded_by] || rfp.uploaded_by}</TableCell>
                           <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
-                          <TableCell className="text-gray-700">
-                              {rfp.assigned_to_worker_name || "N/A"} {/* Display assigned worker */}
-                          </TableCell>
                           <TableCell className="text-right flex space-x-2 justify-end">
                             {rfp.status === "assigned" && (
                                 <Button
@@ -780,7 +805,14 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                               variant="outline"
                               size="sm"
                               className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg"
-                              onClick={() => window.open(rfp.file_url, "_blank")}
+                              onClick={() => {
+                                const url = rfp.file_url;
+                                if (url) {
+                                  window.open(url, "_blank");
+                                } else {
+                                  setError("No file URL available for this RFP.");
+                                }
+                              }}
                             >
                               <Download className="h-4 w-4 mr-1" /> View
                             </Button>
@@ -824,25 +856,26 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rfps.filter(rfp => rfp.status === "pending").length === 0 ? (
+                    {rfps.filter(rfp => rfp.status === "pending" || rfp.status === "review pending").length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-4 text-gray-500">
                           No RFPs pending admin verification.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      rfps.filter(rfp => rfp.status === "pending").map((rfp) => (
+                      rfps.filter(rfp => rfp.status === "review pending").map((rfp) => (
                         <TableRow key={rfp.id} className="hover:bg-gray-50">
                           <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
                           <TableCell>
-                            <Badge className="rounded-xl bg-yellow-100 text-yellow-700">Pending Review</Badge>
+                            <Badge className="rounded-xl bg-yellow-100 text-yellow-700">Review Pending</Badge>
                           </TableCell>
                           <TableCell className="text-gray-700">{rfp.assigned_to_worker_name || "N/A"}</TableCell>
                           <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
                           <TableCell className="text-right flex space-x-2 justify-end">
-                            {rfp.pdf_url ? (
+                            
+                            {rfp.pdf_url || pdfUrls[rfp.id] ? (
                               <Button
-                                onClick={() => window.open(rfp.pdf_url, "_blank")}
+                                onClick={() => window.open(rfp.pdf_url || pdfUrls[rfp.id], "_blank")}
                                 size="sm"
                                 className="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 rounded-lg"
                               >
@@ -893,13 +926,13 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                             {/* Send Message Button */}
                             <Dialog>
                               <DialogTrigger asChild>
-                                <Button
+                                {/* <Button
                                   variant="outline"
                                   size="sm"
                                   className="ml-2 bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200 rounded-lg"
                                 >
                                   Send Message
-                                </Button>
+                                </Button> */}
                               </DialogTrigger>
                               <DialogContent className="sm:max-w-md rounded-2xl">
                                 <DialogHeader>

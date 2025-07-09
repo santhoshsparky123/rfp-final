@@ -142,7 +142,8 @@ def final_rfp(
         I have a document which contains the text "{text}". I want you to apply the following {changes} to each relevant part of the data. Modify the content accordingly and return the final output in the correct order, preserving structure and formatting. Apply only the changes mentioned—do not invent or omit anything.
         """
     )
-        
+    
+    print(prompt.text)
     return {
         "prompt" : prompt.text
     }        
@@ -183,11 +184,7 @@ def ok(
     if not rfp: # Added check for RFP
         raise HTTPException(status_code=404, detail="RFP not found")
     
-    company = db.query(Company).filter(Company.id==rfp.company_id).first()
-    print(company)
-    filename: str = Form(...),
-    db: Session = Depends(get_db)
-    rfp = db.query(RFP).filter(RFP.filename==filename).first()
+    
     company = db.query(Company).filter(Company.id==rfp.company_id).first()
     print(company.subdomain)
     if not company:

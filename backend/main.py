@@ -13,6 +13,7 @@ from api.super_admin import super_admin
 from api.fetch_username import router as fetch_username_router
 from api.rfp_messages import router as rfp_messages_router
 from api.employee.proposal_edit_llm import router as proposal_edit_llm_router
+from api.pdf_url import router as pdf_url_router
 # Initialize FastAPI app
 app = FastAPI(title="RFP Response Agent API")
 
@@ -64,6 +65,7 @@ app.include_router(upload_rfp.router)
 app.include_router(fetch_username_router)
 app.include_router(rfp_messages_router)
 app.include_router(proposal_edit_llm_router)
+app.include_router(pdf_url_router)
 
 if __name__ == "__main__":
     import uvicorn

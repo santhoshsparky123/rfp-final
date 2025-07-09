@@ -41,6 +41,7 @@ const RFPProposalEdit: React.FC<RFPProposalEditProps> = ({ rfpId, token, pdfUrl,
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>(""); // New state for custom prompt
+  const [downloadUrls, setDownloadUrls] = useState<{ pdf?: string; docx?: string }>({});
 
   // Fetch both generated response and extracted text
   useEffect(() => {
@@ -138,8 +139,17 @@ const RFPProposalEdit: React.FC<RFPProposalEditProps> = ({ rfpId, token, pdfUrl,
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail || "Failed to get LLM response");
       }
+      
       const data = await res.json();
-      setLlmResult(data.result || "No response");
+      console.log("LLM response:", data);
+      const llmText = (data && (data.prompt || data.result)) || JSON.stringify(data) || "No response";
+      setLlmResult(llmText);
+      // Update the main proposal text with the LLM result
+      if (llmText && llmText !== "No response") {
+        const split = splitSections(llmText);
+      setSections(split);
+        setSectionEdits(split.map(s => s.content));
+      }
     } catch (err: any) {
       setLlmError(err.message);
     } finally {
@@ -155,28 +165,44 @@ const RFPProposalEdit: React.FC<RFPProposalEditProps> = ({ rfpId, token, pdfUrl,
       const proposal = llmResult || sections.map((s, i) => sectionEdits[i]).join("\n\n");
       const formData = new FormData();
 
-      console.log(rfpId)
-      formData.append('text', proposal); // Append the edited text
-      formData.append("rfp_id",rfpId.toString());
+      formData.append('text', proposal);
+      formData.append("rfp_id", rfpId.toString());
 
       const res = await fetch(`http://localhost:8000/api/employee/ok`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          // 'Content-Type': 'application/json', // REMOVE this line when sending FormData
         },
-        body: formData, // Send as FormData
+        body: formData,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail || "Failed to generate final proposal");
       }
       const data = await res.json();
-      onFinal(data.result || "Final proposal generated, but no result returned.");
+      setDownloadUrls({ pdf: data.pdf_url, docx: data.docx_url });
+      onFinal({ ...data, rfp_id: rfpId });
     } catch (err: any) {
       setFinalError(err.message);
     } finally {
       setFinalLoading(false);
+    }
+  };
+
+  const handleViewPDF = () => {
+    if (downloadUrls.pdf) {
+      window.open(downloadUrls.pdf, '_blank');
+    }
+  };
+
+  const handleDownloadDocx = () => {
+    if (downloadUrls.docx) {
+      const link = document.createElement('a');
+      link.href = downloadUrls.docx;
+      link.download = `${rfpId}_proposal.docx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
   };
 
@@ -205,8 +231,8 @@ const RFPProposalEdit: React.FC<RFPProposalEditProps> = ({ rfpId, token, pdfUrl,
           <label className="block text-sm font-medium text-gray-700 mb-1">Response Data</label>
           <textarea
             className="w-full min-h-[180px] border rounded p-2 text-sm bg-gray-50 mb-2"
-            value={llmResult || sectionEdits.join("\n\n")}
-            readOnly
+            value={sectionEdits.join("\n\n")}
+            onChange={e => setSectionEdits([e.target.value])}
           />
         </div>
         {/* Prompt box and LLM/Update buttons */}
@@ -225,7 +251,7 @@ const RFPProposalEdit: React.FC<RFPProposalEditProps> = ({ rfpId, token, pdfUrl,
             <Button onClick={handleLLM} disabled={llmLoading || !customPrompt}>
               {llmLoading ? "LLM..." : "LLM"}
             </Button>
-            <Button onClick={handleFinalProcess} disabled={finalLoading || !!finalError} className="bg-green-600 hover:bg-green-700 text-white rounded-xl">
+            <Button onClick={handleFinalProcess} className="bg-green-600 hover:bg-green-700 text-white rounded-xl">
               {finalLoading ? "Updating..." : "Update"}
             </Button>
           </div>
@@ -234,9 +260,21 @@ const RFPProposalEdit: React.FC<RFPProposalEditProps> = ({ rfpId, token, pdfUrl,
         {llmError && (
           <Alert variant="destructive" className="mt-2"><AlertDescription>{llmError}</AlertDescription></Alert>
         )}
-        {llmResult && (
-          <Alert className="mt-2"><AlertDescription>{llmResult}</AlertDescription></Alert>
-        )}
+        {/* PDF View and DOCX Download Buttons after update */}
+        {downloadUrls.pdf || downloadUrls.docx ? (
+          <div className="flex gap-4 mt-4">
+            {downloadUrls.pdf && (
+              <Button onClick={handleViewPDF} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
+                View PDF
+              </Button>
+            )}
+            {downloadUrls.docx && (
+              <Button onClick={handleDownloadDocx} className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl">
+                Download Word
+              </Button>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
