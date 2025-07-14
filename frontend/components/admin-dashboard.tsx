@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -26,15 +28,15 @@ import {
   CheckCircle,
   AlertCircle,
   Mail,
-  Calendar,
   FileText,
   Download,
-  Eye, // Keep Eye if you plan to use it elsewhere, otherwise remove
+  Eye,
   Activity,
   PlusCircle,
-  LayoutDashboard, // For dashboard icon
-  RefreshCw, // For unassign action
-  UploadCloud, // Added for upload document
+  LayoutDashboard,
+  RefreshCw,
+  Settings,
+  UploadCloud,
 } from "lucide-react"
 import RFPMessagePage from "@/components/rfp-messages-page"
 
@@ -89,8 +91,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showAssignRfpDialog, setShowAssignRfpDialog] = useState(false)
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
-  const [showUploadDocumentDialog, setShowUploadDocumentDialog] = useState(false) // New state for upload dialog
-  const [newDocument, setNewDocument] = useState<File | null>(null) // New state for selected document file
+  const [selectedRfpId, setSelectedRfpId] = useState<number | null>(null) // New state for selected RFP ID
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -102,12 +103,16 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     password: "",
   })
 
-  const [activeContent, setActiveContent] = useState<"dashboard" | "workers" | "rfps" | "completion" | "messages">("dashboard")
+  const [activeContent, setActiveContent] = useState<
+    "dashboard" | "workers" | "rfps" | "completion" | "messages" | "settings"
+  >("dashboard")
 
-  const [usernames, setUsernames] = useState<{ [userId: number]: string }>({});
+  const [usernames, setUsernames] = useState<{ [userId: number]: string }>({})
   // State to store fetched PDF URLs for RFPs
-  const [pdfUrls, setPdfUrls] = useState<{ [rfpId: number]: string }>({});
-  const [selectedRfpId, setSelectedRfpId] = useState<number | null>(null); // New state for selected RFP ID
+  const [pdfUrls, setPdfUrls] = useState<{ [rfpId: number]: string }>({})
+
+  const [showUploadDocumentDialog, setShowUploadDocumentDialog] = useState(false) // New state for upload dialog
+  const [newDocument, setNewDocument] = useState<File | null>(null) // New state for selected document file
 
   // Function to fetch company ID
   const fetchCompanyId = useCallback(async (userId: string) => {
@@ -128,20 +133,86 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
   // Helper to fetch username by user ID
   const fetchUsername = useCallback(async (userId: number) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/fetch-username/${userId}`);
-      const data = await res.json();
+      const res = await fetch(`http://localhost:8000/api/fetch-username/${userId}`)
+      const data = await res.json()
       // Defensive: handle both {username: ...} and string response
-      const username = typeof data === 'string' ? data : data.username;
+      const username = typeof data === "string" ? data : data.username
       if (username) {
-        setUsernames(prev => ({ ...prev, [userId]: username }));
-        return username;
+        setUsernames((prev) => ({ ...prev, [userId]: username }))
+        return username
       }
     } catch (e) {
-      console.error("Failed to fetch username for userId", userId, e);
+      console.error("Failed to fetch username for userId", userId, e)
     }
-    setUsernames(prev => ({ ...prev, [userId]: userId.toString() }));
-    return userId.toString();
-  }, []);
+    setUsernames((prev) => ({ ...prev, [userId]: userId.toString() }))
+    return userId.toString()
+  }, [])
+
+  // New functions for document upload
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setNewDocument(e.target.files[0])
+    } else {
+      setNewDocument(null)
+    }
+  }
+
+  const handleUploadDocument = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    if (!newDocument) {
+      setError("Please select a file to upload.")
+      setLoading(false)
+      return
+    }
+
+    try {
+      const company_id_for_document = await fetchCompanyId(user.id)
+      if (!company_id_for_document) {
+        setLoading(false)
+        return
+      }
+
+      const formData = new FormData()
+      formData.append("file", newDocument)
+      formData.append("company_id", company_id_for_document.toString()) // Ensure company_id is a string if expected
+
+      const response = await fetch("http://localhost:8000/api/add-document/", {
+        // Updated route
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      })
+
+      if (!response.ok) {
+        let errorMsg = `HTTP error! status: ${response.status}`
+        try {
+          const errorData = await response.json()
+          errorMsg = errorData.detail || JSON.stringify(errorData) || errorMsg
+        } catch (e) {
+          try {
+            const text = await response.text()
+            errorMsg = text || errorMsg
+          } catch {}
+        }
+        throw new Error(errorMsg)
+      }
+
+      setSuccess(`Document "${newDocument.name}" uploaded successfully!`)
+      setNewDocument(null)
+      setShowUploadDocumentDialog(false)
+      fetchRfps() // Refresh the RFP list to show the newly uploaded document
+    } catch (err: any) {
+      setError(`Failed to upload document: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Function to fetch workers
   const fetchWorkers = useCallback(async () => {
@@ -149,12 +220,11 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     setError(null)
     try {
       const company_id_from_backend = await fetchCompanyId(user.id)
-      if (!company_id_from_backend)
-        return
+      if (!company_id_from_backend) return
       const response = await fetch(`http://localhost:8000/api/all-employee/${company_id_from_backend}`, {
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       })
       if (!response.ok) {
@@ -166,7 +236,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
       const fetchedEmployees = rawData.employees
 
       if (!Array.isArray(fetchedEmployees)) {
-          throw new Error("Backend response 'employees' is not an array.")
+        throw new Error("Backend response 'employees' is not an array.")
       }
 
       setWorkers(
@@ -202,7 +272,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
       const response = await fetch(`http://localhost:8000/api/get_rfps/${company_id_from_backend}`, {
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       })
       if (!response.ok) {
@@ -236,8 +306,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
       )
 
       // Filter pending RFPs based on status and if they are assigned
-      setPendingRfps(fetchedRfps.filter((rfp: any) => rfp.status === "pending" && !rfp.assigned_to_worker_id));
-
+      setPendingRfps(fetchedRfps.filter((rfp: any) => rfp.status === "pending" && !rfp.assigned_to_worker_id))
     } catch (err: any) {
       console.error("Error fetching RFPs:", err)
       setError(`Failed to fetch RFPs: ${err.message}`)
@@ -257,30 +326,30 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
   // When fetching RFPs, also fetch usernames for uploaded_by
   useEffect(() => {
     if (rfps.length > 0) {
-      const uniqueUserIds = Array.from(new Set(rfps.map((r) => r.uploaded_by)));
+      const uniqueUserIds = Array.from(new Set(rfps.map((r) => r.uploaded_by)))
       uniqueUserIds.forEach((id) => {
-        if (!usernames[id]) fetchUsername(id);
-      });
+        if (!usernames[id]) fetchUsername(id)
+      })
     }
-  }, [rfps, fetchUsername, usernames]);
-  
+  }, [rfps, fetchUsername, usernames])
+
   // Fetch PDF URLs for all RFPs on load or when rfps change
   useEffect(() => {
     const fetchAllPdfUrls = async () => {
-      if (rfps.length === 0) return;
+      if (rfps.length === 0) return
       for (const rfp of rfps) {
         if (rfp.id && !pdfUrls[rfp.id]) {
           try {
             const response = await fetch(`http://localhost:8000/api/pdf/${rfp.id}`, {
               method: "GET",
               headers: {
-                "Authorization": `Bearer ${token}`,
+                Authorization: `Bearer ${token}`,
               },
-            });
+            })
             if (response.ok) {
-              const data = await response.json();
+              const data = await response.json()
               if (data && data.pdf_url) {
-                setPdfUrls(prev => ({ ...prev, [rfp.id]: data.pdf_url }));
+                setPdfUrls((prev) => ({ ...prev, [rfp.id]: data.pdf_url }))
               }
             }
           } catch (e) {
@@ -288,10 +357,10 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
           }
         }
       }
-    };
-    fetchAllPdfUrls();
+    }
+    fetchAllPdfUrls()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rfps]);
+  }, [rfps])
 
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -355,7 +424,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       })
 
@@ -366,7 +435,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
 
       setSuccess("Worker removed successfully!")
       fetchWorkers() // Re-fetch workers to update their assigned RFPs count
-      fetchRfps()    // Re-fetch RFPs to update their status based on backend changes
+      fetchRfps() // Re-fetch RFPs to update their status based on backend changes
     } catch (err: any) {
       setError(`Failed to remove worker: ${err} `)
     } finally {
@@ -390,13 +459,16 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     setSuccess(null)
 
     try {
-      const response = await fetch(`http://localhost:8000/api/admin/assign-rfp-to-employee/${selectedEmployeeId}/${rfpId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+      const response = await fetch(
+        `http://localhost:8000/api/admin/assign-rfp-to-employee/${selectedEmployeeId}/${rfpId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
         },
-      })
+      )
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -420,31 +492,31 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     setSuccess(null)
 
     // Find the employee who is assigned this RFP
-    const assignedWorker = workers.find(worker =>
-      Array.isArray(worker.rfps_assigned) && worker.rfps_assigned.includes(rfpId)
-    );
-    const employeeId = assignedWorker ? assignedWorker.id : null;
+    const assignedWorker = workers.find(
+      (worker) => Array.isArray(worker.rfps_assigned) && worker.rfps_assigned.includes(rfpId),
+    )
+    const employeeId = assignedWorker ? assignedWorker.id : null
 
     try {
       if (!employeeId) {
-        throw new Error("Could not determine the employee assigned to this RFP.");
+        throw new Error("Could not determine the employee assigned to this RFP.")
       }
       const response = await fetch(`http://localhost:8000/api/admin/unassign-rfp/${employeeId}/${rfpId}`, {
         method: "POST", // Or DELETE, depending on your backend
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
-      });
+      })
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
       }
-      setSuccess(`RFP ${rfpId} unassigned successfully!`);
-      fetchWorkers(); // Re-fetch workers to update their assigned RFPs count
-      fetchRfps(); // Re-fetch RFPs to update their status and refresh pending RFPs list
+      setSuccess(`RFP ${rfpId} unassigned successfully!`)
+      fetchWorkers() // Re-fetch workers to update their assigned RFPs count
+      fetchRfps() // Re-fetch RFPs to update their status and refresh pending RFPs list
     } catch (err: any) {
-      setError(`Failed to unassign RFP: ${err.message}`);
+      setError(`Failed to unassign RFP: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -458,10 +530,11 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
     try {
       // Assuming your backend has an endpoint to download the RFP content
       // e.g., GET /api/get_rfp/{rfpId}
-      const response = await fetch(`http://localhost:8000/api/get_rfp/${rfpId}`, { // Updated route
+      const response = await fetch(`http://localhost:8000/api/get_rfp/${rfpId}`, {
+        // Updated route
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       })
 
@@ -471,86 +544,21 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
       }
 
       // Get the blob data from the response
-      const blob = await response.blob();
+      const blob = await response.blob()
       // Create a URL for the blob
-      const url = window.URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(blob)
       // Create a temporary link element
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file_url; // Use the original filename for download
-      document.body.appendChild(a);
-      a.click();
-      a.remove(); // Clean up the temporary link
-      window.URL.revokeObjectURL(url); // Release the object URL
+      const a = document.createElement("a")
+      a.href = url
+      a.download = file_url // Use the original filename for download
+      document.body.appendChild(a)
+      a.click()
+      a.remove() // Clean up the temporary link
+      window.URL.revokeObjectURL(url) // Release the object URL
 
-      setSuccess(`RFP ${file_url} downloaded successfully!`);
+      setSuccess(`RFP ${file_url} downloaded successfully!`)
     } catch (err: any) {
-      setError(`Failed to download RFP: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // New functions for document upload
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setNewDocument(e.target.files[0])
-    } else {
-      setNewDocument(null)
-    }
-  }
-
-  const handleUploadDocument = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
-
-    if (!newDocument) {
-      setError("Please select a file to upload.")
-      setLoading(false)
-      return
-    }
-
-    try {
-      const company_id_for_document = await fetchCompanyId(user.id)
-      if (!company_id_for_document) {
-        setLoading(false)
-        return
-      }
-
-      const formData = new FormData()
-      formData.append("file", newDocument)
-      formData.append("company_id", company_id_for_document.toString()) // Ensure company_id is a string if expected
-
-      const response = await fetch("http://localhost:8000/api/add-document/", { // Updated route
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
-        body: formData,
-      })
-
-      if (!response.ok) {
-        let errorMsg = `HTTP error! status: ${response.status}`
-        try {
-          const errorData = await response.json()
-          errorMsg = errorData.detail || JSON.stringify(errorData) || errorMsg
-        } catch (e) {
-          try {
-            const text = await response.text()
-            errorMsg = text || errorMsg
-          } catch {}
-        }
-        throw new Error(errorMsg)
-      }
-
-      setSuccess(`Document "${newDocument.name}" uploaded successfully!`)
-      setNewDocument(null)
-      setShowUploadDocumentDialog(false)
-      fetchRfps() // Refresh the RFP list to show the newly uploaded document
-    } catch (err: any) {
-      setError(`Failed to upload document: ${err.message}`)
+      setError(`Failed to download RFP: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -558,33 +566,33 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
 
   // Function to fetch PDF URL for a given RFP ID (match user dashboard logic)
   const fetchPdfUrl = async (rfpId: number) => {
-    setLoading(true);
-    setError(null);
+    setLoading(true)
+    setError(null)
     try {
       const response = await fetch("http://localhost:8000/api/final-rfp/status", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ rfp_id: rfpId }),
-      });
+      })
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
       }
-      const data = await response.json();
+      const data = await response.json()
       if (data.pdf_url) {
-        setPdfUrls((prev) => ({ ...prev, [rfpId]: data.pdf_url }));
+        setPdfUrls((prev) => ({ ...prev, [rfpId]: data.pdf_url }))
       } else {
-        setError("No PDF proposal document available for this RFP.");
+        setError("No PDF proposal document available for this RFP.")
       }
     } catch (err: any) {
-      setError(`Failed to fetch proposal document: ${err.message}`);
+      setError(`Failed to fetch proposal document: ${err.message}`)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const totalRFPs = rfps.length
   const activeWorkers = workers.filter((worker) => worker.status === "active").length
@@ -675,7 +683,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg"
+                              className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg bg-transparent"
                               onClick={() => handleOpenAssignRfpDialog(worker.id)}
                             >
                               <PlusCircle className="h-4 w-4 mr-1" /> Assign RFP
@@ -683,7 +691,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-red-600 border-red-600 hover:bg-red-50 rounded-lg"
+                              className="text-red-600 border-red-600 hover:bg-red-50 rounded-lg bg-transparent"
                               onClick={() => handleDeleteWorker(worker.id)}
                             >
                               <Trash2 className="h-4 w-4 mr-1" /> Remove
@@ -691,7 +699,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                           </TableCell>
                         </TableRow>
                       ))
-)                    }
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -710,10 +718,15 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                     <p className="text-gray-500 text-center py-4">No pending RFPs available for assignment.</p>
                   ) : (
                     pendingRfps.map((rfp) => (
-                      <Card key={rfp.id} className="flex items-center justify-between p-4 rounded-xl shadow-sm border border-gray-200">
+                      <Card
+                        key={rfp.id}
+                        className="flex items-center justify-between p-4 rounded-xl shadow-sm border border-gray-200"
+                      >
                         <div>
                           <p className="font-medium text-gray-900">{rfp.filename}</p>
-                          <p className="text-sm text-gray-500">Uploaded by: {usernames[rfp.uploaded_by] || rfp.uploaded_by}</p>
+                          <p className="text-sm text-gray-500">
+                            Uploaded by: {usernames[rfp.uploaded_by] || rfp.uploaded_by}
+                          </p>
                         </div>
                         <Button
                           size="sm"
@@ -763,7 +776,9 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                   <TableBody>
                     {rfps.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-4 text-gray-500"> {/* Updated colspan */}
+                        <TableCell colSpan={7} className="text-center py-4 text-gray-500">
+                          {" "}
+                          {/* Updated colspan */}
                           No RFPs found.
                         </TableCell>
                       </TableRow>
@@ -788,29 +803,31 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                               {rfp.status.replace(/_/g, " ")}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-gray-700">{usernames[rfp.uploaded_by] || rfp.uploaded_by}</TableCell>
+                          <TableCell className="text-gray-700">
+                            {usernames[rfp.uploaded_by] || rfp.uploaded_by}
+                          </TableCell>
                           <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
                           <TableCell className="text-right flex space-x-2 justify-end">
                             {rfp.status === "assigned" && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="text-orange-600 border-orange-600 hover:bg-orange-50 rounded-lg"
-                                  onClick={() => handleUnassignRFP(rfp.id)}
-                                >
-                                  <RefreshCw className="h-4 w-4 mr-1" /> Unassign
-                                </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-orange-600 border-orange-600 hover:bg-orange-50 rounded-lg bg-transparent"
+                                onClick={() => handleUnassignRFP(rfp.id)}
+                              >
+                                <RefreshCw className="h-4 w-4 mr-1" /> Unassign
+                              </Button>
                             )}
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg"
+                              className="text-purple-600 border-purple-600 hover:bg-purple-50 rounded-lg bg-transparent"
                               onClick={() => {
-                                const url = rfp.file_url;
+                                const url = rfp.file_url
                                 if (url) {
-                                  window.open(url, "_blank");
+                                  window.open(url, "_blank")
                                 } else {
-                                  setError("No file URL available for this RFP.");
+                                  setError("No file URL available for this RFP.")
                                 }
                               }}
                             >
@@ -819,10 +836,10 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg"
+                              className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg bg-transparent"
                               onClick={() => {
-                                setSelectedRfpId(rfp.id);
-                                setActiveContent("messages");
+                                setSelectedRfpId(rfp.id)
+                                setActiveContent("messages")
                               }}
                             >
                               <Mail className="h-4 w-4 mr-1" /> Messages
@@ -856,134 +873,146 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rfps.filter(rfp => rfp.status === "pending" || rfp.status === "review pending").length === 0 ? (
+                    {rfps.filter((rfp) => rfp.status === "pending" || rfp.status === "review pending").length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-4 text-gray-500">
                           No RFPs pending admin verification.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      rfps.filter(rfp => rfp.status === "review pending").map((rfp) => (
-                        <TableRow key={rfp.id} className="hover:bg-gray-50">
-                          <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
-                          <TableCell>
-                            <Badge className="rounded-xl bg-yellow-100 text-yellow-700">Review Pending</Badge>
-                          </TableCell>
-                          <TableCell className="text-gray-700">{rfp.assigned_to_worker_name || "N/A"}</TableCell>
-                          <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
-                          <TableCell className="text-right flex space-x-2 justify-end">
-                            
-                            {rfp.pdf_url || pdfUrls[rfp.id] ? (
+                      rfps
+                        .filter((rfp) => rfp.status === "review pending")
+                        .map((rfp) => (
+                          <TableRow key={rfp.id} className="hover:bg-gray-50">
+                            <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
+                            <TableCell>
+                              <Badge className="rounded-xl bg-yellow-100 text-yellow-700">Review Pending</Badge>
+                            </TableCell>
+                            <TableCell className="text-gray-700">{rfp.assigned_to_worker_name || "N/A"}</TableCell>
+                            <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
+                            <TableCell className="text-right flex space-x-2 justify-end">
+                              {rfp.pdf_url || pdfUrls[rfp.id] ? (
+                                <Button
+                                  onClick={() => window.open(rfp.pdf_url || pdfUrls[rfp.id], "_blank")}
+                                  size="sm"
+                                  className="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 rounded-lg"
+                                >
+                                  <Eye className="w-4 h-4 mr-1" />
+                                  View Response
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className="bg-gradient-to-r from-gray-400 to-gray-500 rounded-lg cursor-not-allowed opacity-60"
+                                  disabled
+                                >
+                                  <Eye className="w-4 h-4 mr-1" />
+                                  No PDF
+                                </Button>
+                              )}
                               <Button
-                                onClick={() => window.open(rfp.pdf_url || pdfUrls[rfp.id], "_blank")}
+                                variant="default"
                                 size="sm"
-                                className="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 rounded-lg"
-                              >
-                                <Eye className="w-4 h-4 mr-1" />
-                                View Response
-                              </Button>
-                            ) : (
-                              <Button
-                                size="sm"
-                                className="bg-gradient-to-r from-gray-400 to-gray-500 rounded-lg cursor-not-allowed opacity-60"
-                                disabled
-                              >
-                                <Eye className="w-4 h-4 mr-1" />
-                                No PDF
-                              </Button>
-                            )}
-                            <Button
-                              variant="default"
-                              size="sm"
-                              className="bg-green-600 hover:bg-green-700 text-white rounded-lg"
-                              onClick={async () => {
-                                setLoading(true);
-                                setError(null);
-                                setSuccess(null);
-                                try {
-                                  const response = await fetch(`http://localhost:8000/api/admin/rfps/${rfp.id}/accept`, {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                      "Authorization": `Bearer ${token}`,
-                                    },
-                                  });
-                                  if (!response.ok) {
-                                    const errorData = await response.json();
-                                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                                className="bg-green-600 hover:bg-green-700 text-white rounded-lg"
+                                onClick={async () => {
+                                  setLoading(true)
+                                  setError(null)
+                                  setSuccess(null)
+                                  try {
+                                    const response = await fetch(
+                                      `http://localhost:8000/api/admin/rfps/${rfp.id}/accept`,
+                                      {
+                                        method: "POST",
+                                        headers: {
+                                          "Content-Type": "application/json",
+                                          Authorization: `Bearer ${token}`,
+                                        },
+                                      },
+                                    )
+                                    if (!response.ok) {
+                                      const errorData = await response.json()
+                                      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+                                    }
+                                    setSuccess(`RFP ${rfp.filename} marked as completed!`)
+                                    fetchRfps()
+                                  } catch (err: any) {
+                                    setError(`Failed to mark RFP as completed: ${err.message}`)
+                                  } finally {
+                                    setLoading(false)
                                   }
-                                  setSuccess(`RFP ${rfp.filename} marked as completed!`);
-                                  fetchRfps();
-                                } catch (err: any) {
-                                  setError(`Failed to mark RFP as completed: ${err.message}`);
-                                } finally {
-                                  setLoading(false);
-                                }
-                              }}
-                            >
-                              <CheckCircle className="h-4 w-4 mr-1" /> Verified
-                            </Button>
-                            {/* Send Message Button */}
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                {/* <Button
+                                }}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-1" /> Verified
+                              </Button>
+                              {/* Send Message Button */}
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  {/* <Button
                                   variant="outline"
                                   size="sm"
                                   className="ml-2 bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200 rounded-lg"
                                 >
                                   Send Message
                                 </Button> */}
-                              </DialogTrigger>
-                              <DialogContent className="sm:max-w-md rounded-2xl">
-                                <DialogHeader>
-                                  <DialogTitle>Send Message to Employee</DialogTitle>
-                                  <DialogDescription>Enter a message for this RFP. It will be stored in the RFP's message history.</DialogDescription>
-                                </DialogHeader>
-                                <form
-                                  onSubmit={async (e) => {
-                                    e.preventDefault();
-                                    const form = e.target as HTMLFormElement;
-                                    const messageInput = form.elements.namedItem("message") as HTMLInputElement;
-                                    const message = messageInput.value;
-                                    setLoading(true);
-                                    setError(null);
-                                    setSuccess(null);
-                                    try {
-                                      const response = await fetch(`http://localhost:8000/api/admin/rfps/${rfp.id}/message`, {
-                                        method: "POST",
-                                        headers: {
-                                          "Content-Type": "application/json",
-                                          "Authorization": `Bearer ${token}`,
-                                        },
-                                        body: JSON.stringify({ message }),
-                                      });
-                                      if (!response.ok) {
-                                        const errorData = await response.json();
-                                        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-md rounded-2xl">
+                                  <DialogHeader>
+                                    <DialogTitle>Send Message to Employee</DialogTitle>
+                                    <DialogDescription>
+                                      Enter a message for this RFP. It will be stored in the RFP's message history.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <form
+                                    onSubmit={async (e) => {
+                                      e.preventDefault()
+                                      const form = e.target as HTMLFormElement
+                                      const messageInput = form.elements.namedItem("message") as HTMLInputElement
+                                      const message = messageInput.value
+                                      setLoading(true)
+                                      setError(null)
+                                      setSuccess(null)
+                                      try {
+                                        const response = await fetch(
+                                          `http://localhost:8000/api/admin/rfps/${rfp.id}/message`,
+                                          {
+                                            method: "POST",
+                                            headers: {
+                                              "Content-Type": "application/json",
+                                              Authorization: `Bearer ${token}`,
+                                            },
+                                            body: JSON.stringify({ message }),
+                                          },
+                                        )
+                                        if (!response.ok) {
+                                          const errorData = await response.json()
+                                          throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
+                                        }
+                                        setSuccess("Message sent and stored successfully!")
+                                        fetchRfps()
+                                      } catch (err: any) {
+                                        setError(`Failed to send message: ${err.message}`)
+                                      } finally {
+                                        setLoading(false)
                                       }
-                                      setSuccess("Message sent and stored successfully!");
-                                      fetchRfps();
-                                    } catch (err: any) {
-                                      setError(`Failed to send message: ${err.message}`);
-                                    } finally {
-                                      setLoading(false);
-                                    }
-                                  }}
-                                  className="space-y-4"
-                                >
-                                  <Label htmlFor="message">Message</Label>
-                                  <Input id="message" name="message" required className="rounded-xl" />
-                                  <DialogFooter>
-                                    <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl">
-                                      Send
-                                    </Button>
-                                  </DialogFooter>
-                                </form>
-                              </DialogContent>
-                            </Dialog>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                                    }}
+                                    className="space-y-4"
+                                  >
+                                    <Label htmlFor="message">Message</Label>
+                                    <Input id="message" name="message" required className="rounded-xl" />
+                                    <DialogFooter>
+                                      <Button
+                                        type="submit"
+                                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
+                                      >
+                                        Send
+                                      </Button>
+                                    </DialogFooter>
+                                  </form>
+                                </DialogContent>
+                              </Dialog>
+                            </TableCell>
+                          </TableRow>
+                        ))
                     )}
                   </TableBody>
                 </Table>
@@ -1000,14 +1029,138 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
               </CardHeader>
               <CardContent>
                 {/* Render RFPMessagePage component directly */}
-                <RFPMessagePage user={{ id: user.id, role: user.role, token: token || '' }} rfpId={selectedRfpId || rfps[0]?.id || 0} isAdmin={user.role === 'admin'} />
+                <RFPMessagePage
+                  user={{ id: user.id, role: user.role, token: token || "" }}
+                  rfpId={selectedRfpId || rfps[0]?.id || 0}
+                  isAdmin={user.role === "admin"}
+                />
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {activeContent === "settings" && (
+          <section className="mb-8">
+            <Card className="rounded-2xl shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold text-gray-800">Settings</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-4">Document Management</h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <p className="font-medium">Upload Company Document</p>
+                          <p className="text-sm text-gray-500">Upload new RFP documents for processing</p>
+                        </div>
+                        <Dialog open={showUploadDocumentDialog} onOpenChange={setShowUploadDocumentDialog}>
+                          <DialogTrigger asChild>
+                            <Button className="bg-green-600 hover:bg-green-700 text-white">
+                              <UploadCloud className="w-4 h-4 mr-2" />
+                              Upload Document
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-md rounded-2xl">
+                            <DialogHeader>
+                              <DialogTitle className="flex items-center gap-2">
+                                <UploadCloud className="w-5 h-5 text-green-600" />
+                                Upload Company Document
+                              </DialogTitle>
+                              <DialogDescription>Upload a new RFP document for processing.</DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleUploadDocument} className="space-y-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="document">Select Document</Label>
+                                <Input
+                                  id="document"
+                                  type="file"
+                                  onChange={handleFileChange}
+                                  required
+                                  className="rounded-xl"
+                                />
+                              </div>
+                              <div className="flex gap-3 pt-4">
+                                <Button
+                                  type="submit"
+                                  disabled={loading || !newDocument}
+                                  className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 rounded-xl"
+                                >
+                                  {loading ? "Uploading..." : "Upload Document"}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setShowUploadDocumentDialog(false)
+                                    setNewDocument(null) // Clear selected file on cancel
+                                  }}
+                                  className="flex-1 rounded-xl"
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-4">Account Settings</h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <p className="font-medium">Profile Information</p>
+                          <p className="text-sm text-gray-500">Update your account details</p>
+                        </div>
+                        <Button variant="outline" size="sm">
+                          Edit
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <p className="font-medium">Password</p>
+                          <p className="text-sm text-gray-500">Change your password</p>
+                        </div>
+                        <Button variant="outline" size="sm">
+                          Change
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {/* <div>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-4">System Settings</h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <p className="font-medium">Notifications</p>
+                          <p className="text-sm text-gray-500">Manage email and system notifications</p>
+                        </div>
+                        <Button variant="outline" size="sm">
+                          Configure
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <p className="font-medium">Company Settings</p>
+                          <p className="text-sm text-gray-500">Manage company-wide preferences</p>
+                        </div>
+                        <Button variant="outline" size="sm">
+                          Manage
+                        </Button>
+                      </div>
+                    </div>
+                  </div> */}
+                </div>
               </CardContent>
             </Card>
           </section>
         )}
       </div>
-    );
-  };
+    )
+  }
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100">
@@ -1058,6 +1211,14 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
           >
             <Mail className="w-5 h-5 mr-3" />
             Messages
+          </Button>
+          <Button
+            variant="ghost"
+            className={`w-full justify-start rounded-lg text-lg py-6 ${activeContent === "settings" ? "bg-blue-600 hover:bg-blue-600/90" : "hover:bg-blue-700/70"}`}
+            onClick={() => setActiveContent("settings")}
+          >
+            <Settings className="w-5 h-5 mr-3" />
+            Settings
           </Button>
         </nav>
 
@@ -1134,61 +1295,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
             </DialogContent>
           </Dialog>
 
-          {/* New Button: Upload Company Document */}
-          <Dialog open={showUploadDocumentDialog} onOpenChange={setShowUploadDocumentDialog}>
-            <DialogTrigger asChild>
-              <Button className="w-full bg-green-600 hover:bg-green-700 rounded-xl shadow-lg mb-3">
-                <UploadCloud className="w-4 h-4 mr-2" />
-                Upload Company Document
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md rounded-2xl">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <UploadCloud className="w-5 h-5 text-green-600" />
-                  Upload Company Document
-                </DialogTitle>
-                <DialogDescription>Upload a new RFP document for processing.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleUploadDocument} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="document">Select Document</Label>
-                  <Input
-                    id="document"
-                    type="file"
-                    onChange={handleFileChange}
-                    required
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    type="submit"
-                    disabled={loading || !newDocument}
-                    className="flex-1 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 rounded-xl"
-                  >
-                    {loading ? "Uploading..." : "Upload Document"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setShowUploadDocumentDialog(false);
-                      setNewDocument(null); // Clear selected file on cancel
-                    }}
-                    className="flex-1 rounded-xl"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          <Button
-            onClick={onLogout}
-            className="w-full bg-red-500 hover:bg-red-600 rounded-xl shadow-lg mt-3"
-          >
+          <Button onClick={onLogout} className="w-full bg-red-500 hover:bg-red-600 rounded-xl shadow-lg mt-3">
             <LogOut className="w-4 h-4 mr-2" />
             Logout
           </Button>
@@ -1204,10 +1311,13 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
               <Mail className="w-4 h-4 mr-2" />
               {user.email}
             </Badge>
-            <Badge variant="secondary" className="text-lg px-4 py-2 rounded-full bg-blue-500 text-white">
-              <Shield className="w-4 h-4 mr-2" />
-              {user.role.toUpperCase()}
-            </Badge>
+            <Button
+              onClick={() => setShowCreateDialog(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-4 py-2 shadow-lg"
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              Add Employee
+            </Button>
           </div>
         </header>
 

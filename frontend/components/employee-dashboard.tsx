@@ -464,7 +464,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                     </div>
                   </div>
 
-                  <Card className="border-0 shadow-lg">
+                  {/* <Card className="border-0 shadow-lg">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Zap className="w-5 h-5 text-blue-600" />
@@ -494,7 +494,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                         })}
                       </div>
                     </CardContent>
-                  </Card>
+                  </Card> */}
 
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     {[
