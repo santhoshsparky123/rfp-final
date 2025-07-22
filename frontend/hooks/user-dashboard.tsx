@@ -25,7 +25,7 @@ import {
   SidebarInset,
 } from "@/components/ui/sidebar"
 
-import { ThemeToggle } from "@/components/theme-toggle" // Import ThemeToggle
+import { ThemeToggle } from "@/components/theme-toggle"
 
 import {
   User,
@@ -179,7 +179,6 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
     fetchCompanies()
   }, [fetchCompanies])
 
-  // Poll for company responses every 6 seconds when viewing company-responses
   useEffect(() => {
     if (activeSection === "company-responses") {
       fetchCompanyResponses()
@@ -314,12 +313,14 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
             RFP AI
           </h2>
         </div>
-        <div className="px-2 pb-4 border-b">
-          <div className="text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+        <div className="px-2 pb-4 border-b border-border">
+          <div className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-2">
             <User className="w-4 h-4 text-indigo-600" /> {user.name}
           </div>
-          <div className="text-xs text-gray-500 mb-2">{user.email}</div>
-          <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200">User Role</Badge>
+          <div className="text-xs text-muted-foreground mb-2">{user.email}</div>
+          <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900 dark:text-indigo-200">
+            User Role
+          </Badge>
         </div>
       </SidebarHeader>
 
@@ -368,7 +369,7 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={onLogout}
-              className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+              className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900 dark:hover:text-red-200"
             >
               <LogOut className="w-4 h-4" />
               <span>Logout</span>
@@ -381,7 +382,7 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-cyan-100 flex w-full dark:from-gray-900 dark:via-gray-800 dark:to-gray-700 dark:text-gray-100">
+      <div className="min-h-screen bg-gradient-to-br from-light-bg-start via-light-bg-mid to-light-bg-end flex w-full text-foreground dark:from-dark-bg-start dark:via-dark-bg-mid dark:to-dark-bg-end dark:text-foreground">
         <AppSidebar />
         <SidebarInset className="flex-1">
           <div className="p-6">
@@ -396,12 +397,10 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                   <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-800 via-blue-800 to-cyan-800 bg-clip-text text-transparent dark:from-indigo-400 dark:via-blue-400 dark:to-cyan-400">
                     Dashboard Overview
                   </h1>
-                  <p className="text-gray-600 mt-1 dark:text-gray-300">Manage your RFPs and companies</p>
+                  <p className="text-muted-foreground mt-1">Manage your RFPs and companies</p>
                 </div>
               </div>
               <div className="ml-auto">
-                {" "}
-                {/* Add ThemeToggle here */}
                 <ThemeToggle />
               </div>
             </div>
@@ -410,10 +409,10 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
             {error && (
               <Alert
                 variant="destructive"
-                className="mb-6 rounded-xl border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900"
+                className="mb-6 rounded-xl border-destructive bg-destructive text-destructive-foreground dark:border-destructive dark:bg-destructive"
               >
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription className="text-red-800 dark:text-red-200">{error}</AlertDescription>
+                <AlertDescription className="text-destructive-foreground">{error}</AlertDescription>
               </Alert>
             )}
 
@@ -428,14 +427,14 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
             {activeSection === "upload" && (
               <div className="max-w-4xl mx-auto">
                 {!uploading && !structuredData && (
-                  <Card className="shadow-xl border-0 overflow-hidden dark:bg-gray-800 dark:text-gray-100">
+                  <Card className="shadow-xl border-0 overflow-hidden bg-card text-foreground dark:bg-card dark:text-foreground">
                     <div className="h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
                     <CardHeader>
-                      <CardTitle className="flex items-center gap-2 dark:text-gray-100">
+                      <CardTitle className="flex items-center gap-2 text-foreground">
                         <Upload className="w-5 h-5" />
                         Upload RFP Document
                       </CardTitle>
-                      <CardDescription className="dark:text-gray-300">
+                      <CardDescription className="text-muted-foreground">
                         Upload your RFP document (PDF, DOC, or DOCX) to begin processing
                       </CardDescription>
                     </CardHeader>
@@ -446,32 +445,30 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                           className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
                             isDragActive
                               ? "border-blue-400 bg-blue-50 dark:border-blue-600 dark:bg-blue-900"
-                              : "border-gray-300 hover:border-gray-400 dark:border-gray-600 dark:hover:border-gray-500"
+                              : "border-border hover:border-gray-400 dark:border-border dark:hover:border-gray-500"
                           }`}
                         >
                           <input {...getInputProps()} />
-                          <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400 dark:text-gray-500" />
+                          <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                           {isDragActive ? (
                             <p className="text-blue-600 dark:text-blue-400">Drop the RFP document here...</p>
                           ) : (
                             <div>
-                              <p className="text-gray-600 mb-2 dark:text-gray-300">
+                              <p className="text-muted-foreground mb-2">
                                 Drag & drop your RFP document here, or click to select
                               </p>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">
-                                Supports PDF, DOC, and DOCX files
-                              </p>
+                              <p className="text-sm text-muted-foreground">Supports PDF, DOC, and DOCX files</p>
                             </div>
                           )}
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          <div className="flex items-center justify-between p-4 border rounded-lg dark:border-gray-700 dark:bg-gray-700">
+                          <div className="flex items-center justify-between p-4 border rounded-lg border-border dark:bg-muted/50 dark:border-border">
                             <div className="flex items-center gap-3">
                               <FileText className="w-8 h-8 text-blue-500 dark:text-blue-400" />
                               <div>
-                                <p className="font-medium dark:text-gray-100">{uploadedFile.name}</p>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                                <p className="font-medium text-foreground">{uploadedFile.name}</p>
+                                <p className="text-sm text-muted-foreground">
                                   {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
                                 </p>
                               </div>
@@ -485,18 +482,18 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                                 setError(null)
                                 setSuccess(null)
                               }}
-                              className="dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700"
+                              className="border-border text-foreground hover:bg-muted/50"
                             >
                               Remove
                             </Button>
                           </div>
 
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-200">
+                            <label className="block text-sm font-medium text-muted-foreground mb-2">
                               Select Companies to associate with this RFP
                             </label>
                             {companies.length === 0 ? (
-                              <p className="text-gray-500 text-sm dark:text-gray-400">
+                              <p className="text-muted-foreground text-sm">
                                 No companies found. Please create a company first.
                               </p>
                             ) : (
@@ -504,7 +501,7 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                                 {companies.map((company) => (
                                   <div
                                     key={company.id}
-                                    className="flex items-center space-x-2 p-2 border rounded-md dark:border-gray-700 dark:bg-gray-700"
+                                    className="flex items-center space-x-2 p-2 border rounded-md border-border dark:bg-muted/50 dark:border-border"
                                   >
                                     <Checkbox
                                       id={`company-${company.id}`}
@@ -515,7 +512,7 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                                     />
                                     <label
                                       htmlFor={`company-${company.id}`}
-                                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 dark:text-gray-100"
+                                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-foreground"
                                     >
                                       {company.name}
                                     </label>
@@ -527,11 +524,11 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
 
                           {uploading && (
                             <div className="space-y-2">
-                              <div className="flex justify-between text-sm dark:text-gray-300">
+                              <div className="flex justify-between text-sm text-muted-foreground">
                                 <span>Processing RFP...</span>
                                 <span>{uploadProgress}%</span>
                               </div>
-                              <Progress value={uploadProgress} className="dark:bg-gray-700 [&>*]:bg-blue-500" />
+                              <Progress value={uploadProgress} className="dark:bg-muted [&>*]:bg-blue-500" />
                             </div>
                           )}
 
@@ -551,33 +548,35 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                 )}
 
                 {structuredData && (
-                  <Card className="shadow-xl border-0 overflow-hidden dark:bg-gray-800 dark:text-gray-100">
+                  <Card className="shadow-xl border-0 overflow-hidden bg-card text-foreground dark:bg-card dark:text-foreground">
                     <div className="h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-red-500" />
                     <CardHeader>
-                      <CardTitle className="dark:text-gray-100">RFP Structure Overview</CardTitle>
-                      <CardDescription className="dark:text-gray-300">
+                      <CardTitle className="text-foreground">RFP Structure Overview</CardTitle>
+                      <CardDescription className="text-muted-foreground">
                         Extracted structure from your RFP document
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Alert className="mb-4 dark:bg-green-900 dark:border-green-800">
+                      <Alert className="mb-4 bg-green-100 border-green-200 dark:bg-green-900 dark:border-green-800">
                         <CheckCircle className="h-4 w-4" />
-                        <AlertDescription className="dark:text-green-200">RFP processed successfully!</AlertDescription>
+                        <AlertDescription className="text-green-800 dark:text-green-200">
+                          RFP processed successfully!
+                        </AlertDescription>
                       </Alert>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-2">
-                          <h4 className="font-medium dark:text-gray-200"></h4>
+                          <h4 className="font-medium text-muted-foreground"></h4>
                           <div className="space-y-1">
                             {structuredData.sections?.slice(0, 3).map((section: any, index: number) => (
                               <div
                                 key={index}
-                                className="text-sm p-2 bg-gray-50 rounded dark:bg-gray-700 dark:text-gray-100"
+                                className="text-sm p-2 bg-muted/50 rounded dark:bg-muted dark:text-foreground"
                               >
                                 {section.title}
                               </div>
                             ))}
                             {structuredData.sections?.length > 3 && (
-                              <div className="text-sm text-gray-500 dark:text-gray-400">
+                              <div className="text-sm text-muted-foreground">
                                 +{structuredData.sections.length - 3} more sections
                               </div>
                             )}
@@ -585,18 +584,18 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                         </div>
 
                         <div className="space-y-2">
-                          <h4 className="font-medium dark:text-gray-200"></h4>
+                          <h4 className="font-medium text-muted-foreground"></h4>
                           <div className="space-y-1">
                             {structuredData.questions?.slice(0, 3).map((question: any, index: number) => (
                               <div
                                 key={index}
-                                className="text-sm p-2 bg-gray-50 rounded dark:bg-gray-700 dark:text-gray-100"
+                                className="text-sm p-2 bg-muted/50 rounded dark:bg-muted dark:text-foreground"
                               >
                                 {question.text?.substring(0, 50)}...
                               </div>
                             ))}
                             {structuredData.questions?.length > 3 && (
-                              <div className="text-sm text-gray-500 dark:text-gray-400">
+                              <div className="text-sm text-muted-foreground">
                                 +{structuredData.questions.length - 3} more questions
                               </div>
                             )}
@@ -604,7 +603,7 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                         </div>
 
                         <div className="space-y-2">
-                          <h4 className="font-medium dark:text-gray-200"></h4>
+                          <h4 className="font-medium text-muted-foreground"></h4>
                           <div className="space-y-1">
                             {structuredData.requirements?.slice(0, 3).map((req: any, index: number) => (
                               <div key={index} className="flex items-center gap-2">
@@ -614,11 +613,11 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                                 >
                                   {req.mandatory ? "Required" : "Optional"}
                                 </Badge>
-                                <span className="text-sm dark:text-gray-100">{req.text?.substring(0, 30)}...</span>
+                                <span className="text-sm text-foreground">{req.text?.substring(0, 30)}...</span>
                               </div>
                             ))}
                             {structuredData.requirements?.length > 3 && (
-                              <div className="text-sm text-gray-500 dark:text-gray-400">
+                              <div className="text-sm text-muted-foreground">
                                 +{structuredData.requirements.length - 3} more requirements
                               </div>
                             )}
@@ -646,14 +645,16 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
 
             {activeSection === "create-company" && (
               <div className="max-w-xl mx-auto">
-                <Card className="shadow-xl border-0 overflow-hidden dark:bg-gray-800 dark:text-gray-100">
+                <Card className="shadow-xl border-0 overflow-hidden bg-card text-foreground dark:bg-card dark:text-foreground">
                   <div className="h-1 bg-gradient-to-r from-teal-500 via-emerald-500 to-lime-500" />
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 dark:text-gray-100">
+                    <CardTitle className="flex items-center gap-2 text-foreground">
                       <Building className="w-5 h-5" />
                       Create New Company
                     </CardTitle>
-                    <CardDescription className="dark:text-gray-300">Add a new company to your account</CardDescription>
+                    <CardDescription className="text-muted-foreground">
+                      Add a new company to your account
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <CreateCompanyForm userId={user.id} onSuccess={fetchCompanies} />
@@ -664,14 +665,14 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
 
             {activeSection === "company-responses" && (
               <div className="max-w-6xl mx-auto">
-                <Card className="shadow-xl border-0 overflow-hidden dark:bg-gray-800 dark:text-gray-100">
+                <Card className="shadow-xl border-0 overflow-hidden bg-card text-foreground dark:bg-card dark:text-foreground">
                   <div className="h-1 bg-gradient-to-r from-green-500 via-blue-500 to-purple-500" />
-                  <CardHeader className="bg-gradient-to-r from-green-50 to-blue-50 dark:from-gray-700 dark:to-gray-800">
-                    <CardTitle className="flex items-center gap-2 text-xl dark:text-gray-100">
+                  <CardHeader className="bg-muted/50 dark:bg-muted">
+                    <CardTitle className="flex items-center gap-2 text-xl text-foreground">
                       <Reply className="w-6 h-6 text-green-600 dark:text-green-400" />
                       Response from Company
                     </CardTitle>
-                    <CardDescription className="dark:text-gray-300">
+                    <CardDescription className="text-muted-foreground">
                       View and download company responses to your RFPs
                     </CardDescription>
                   </CardHeader>
@@ -679,24 +680,24 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                     {responsesLoading ? (
                       <div className="flex items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400"></div>
-                        <span className="ml-2 text-gray-600 dark:text-gray-300">Loading responses...</span>
+                        <span className="ml-2 text-muted-foreground">Loading responses...</span>
                       </div>
                     ) : (
-                      <div className="rounded-2xl border border-gray-200 overflow-hidden dark:border-gray-700">
+                      <div className="rounded-2xl border border-border overflow-hidden dark:border-border">
                         <Table>
                           <TableHeader>
-                            <TableRow className="bg-gray-50 dark:bg-gray-700">
-                              <TableHead className="font-semibold dark:text-gray-300">RFP Title</TableHead>
-                              <TableHead className="font-semibold dark:text-gray-300">Company</TableHead>
-                              <TableHead className="font-semibold dark:text-gray-300">Date</TableHead>
-                              <TableHead className="font-semibold dark:text-gray-300">Status</TableHead>
-                              <TableHead className="font-semibold dark:text-gray-300">Actions</TableHead>
+                            <TableRow className="bg-muted/50 dark:bg-muted">
+                              <TableHead className="font-semibold text-muted-foreground">RFP Title</TableHead>
+                              <TableHead className="font-semibold text-muted-foreground">Company</TableHead>
+                              <TableHead className="font-semibold text-muted-foreground">Date</TableHead>
+                              <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
+                              <TableHead className="font-semibold text-muted-foreground">Actions</TableHead>
                             </TableRow>
                           </TableHeader>
-                          <TableBody className="divide-y divide-gray-200 dark:divide-gray-700">
+                          <TableBody className="divide-y divide-border dark:divide-border">
                             {companyResponses.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={5} className="text-center py-4 text-gray-500 dark:text-gray-400">
+                                <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
                                   No company responses found. Upload RFPs and wait for companies to respond!
                                 </TableCell>
                               </TableRow>
@@ -704,10 +705,10 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                               companyResponses.map((response) => (
                                 <TableRow
                                   key={response.id}
-                                  className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                                  className={`hover:bg-muted/20 dark:hover:bg-muted/50 ${
                                     response.status === "finished"
-                                      ? "bg-green-50 dark:bg-green-950"
-                                      : "bg-red-50 dark:bg-red-950"
+                                      ? "bg-green-50/50 dark:bg-green-950/50"
+                                      : "bg-red-50/50 dark:bg-red-950/50"
                                   }`}
                                 >
                                   <TableCell>
@@ -716,20 +717,18 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                                         <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                                       </div>
                                       <div>
-                                        <div className="font-medium text-gray-900 dark:text-gray-100">
-                                          {response.title}
-                                        </div>
+                                        <div className="font-medium text-foreground">{response.title}</div>
                                       </div>
                                     </div>
                                   </TableCell>
                                   <TableCell>
                                     <div className="flex items-center gap-2">
-                                      <Building className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                                      <span className="font-medium dark:text-gray-100">{response.company_name}</span>
+                                      <Building className="w-4 h-4 text-muted-foreground" />
+                                      <span className="font-medium text-foreground">{response.company_name}</span>
                                     </div>
                                   </TableCell>
                                   <TableCell>
-                                    <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
+                                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
                                       <Clock className="w-3 h-3" />
                                       {new Date(response.created_at).toLocaleDateString()}
                                     </div>
