@@ -278,3 +278,44 @@ async def add_rfp_message(
     db.refresh(rfp)
     return {"message": "Message added to RFP.", "messages": rfp.message}
 
+@router.get("/admin/{id}")
+async def get_admin_info(id:int,
+    db: Session = Depends(get_db)):
+    admin_info = db.query(User).filter(User.id == id).first()
+    if not admin_info:
+        raise HTTPException(status_code=404, detail="Admin not found.")
+    return {"User_name": admin_info.username, "email": admin_info.email}
+
+class update(BaseModel):
+    id: int
+    user_name: str
+    email: str
+    
+@router.post("/admin/update")
+async def update_admin_info(admin:update,
+    db: Session = Depends(get_db)):
+    admin_info = db.query(User).filter(User.id == admin.id).first()
+    if not admin_info:
+        raise HTTPException(status_code=404, detail="Admin not found.")
+    admin_info.username = admin.user_name
+    admin_info.email = admin.email
+    db.commit()
+    db.refresh(admin_info)
+    return {"user_name": admin_info.username, "email": admin_info.email, "message": "Admin info updated successfully."}
+
+class ChangePassword(BaseModel):
+    id:int
+    new_password: str
+@router.post("/change-password")
+async def change_admin_password(
+    admin: ChangePassword,
+    db: Session = Depends(get_db)
+):
+    admin_info = db.query(User).filter(User.id == admin.id).first()
+    if not admin_info:
+        raise HTTPException(status_code=404, detail="Admin not found.")
+
+    admin_info.hashed_password = get_password_hash(admin.new_password)
+    db.commit()
+    db.refresh(admin_info)
+    return {"message": "Password changed successfully."}
