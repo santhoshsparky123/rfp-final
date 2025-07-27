@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +41,20 @@ export default function Login({ onLogin }: LoginProps) {
     password: "",
     confirmPassword: "",
   })
+
+  useEffect(() => {
+    // Remove dark class from html to force light theme
+    if (typeof window !== "undefined") {
+      document.documentElement.classList.remove("dark");
+    }
+    return () => {
+      // Optionally restore dark class if user had dark mode before
+      const theme = localStorage.getItem("theme");
+      if (theme === "dark") {
+        document.documentElement.classList.add("dark");
+      }
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

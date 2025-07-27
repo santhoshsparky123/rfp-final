@@ -423,25 +423,20 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300">
-                        <CardContent className="p-6 text-center">
-                          <Upload className="w-12 h-12 text-blue-600 mx-auto mb-4" />
-                          <h3 className="font-semibold text-gray-900 mb-2">Upload RFP</h3>
-                          <p className="text-sm text-gray-600 mb-4">Start by uploading your RFP document</p>
-                          <Button
-                            onClick={() => setActiveSection("my-rfps")}
-                            className="w-full bg-blue-600 hover:bg-blue-700"
-                          >
-                            View My RFPs
-                          </Button>
+                      <Card className="border border-border bg-card shadow-md hover:shadow-lg transition-all duration-300">
+                        <CardContent className="p-6 text-center text-card-foreground">
+                          <Upload className="w-12 h-12 text-primary mx-auto mb-4" />
+                          <h3 className="font-semibold text-card-foreground mb-2">Upload RFP</h3>
+                          <p className="text-sm text-muted-foreground mb-4">Start by uploading your RFP document</p>
+                          <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">View My RFPs</Button>
                         </CardContent>
                       </Card>
 
-                      <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300">
-                        <CardContent className="p-6 text-center">
+                      <Card className="border border-border bg-card shadow-md hover:shadow-lg transition-all duration-300">
+                        <CardContent className="p-6 text-center text-card-foreground">
                           <Brain className="w-12 h-12 text-green-600 mx-auto mb-4" />
-                          <h3 className="font-semibold text-gray-900 mb-2">AI Processing</h3>
-                          <p className="text-sm text-gray-600 mb-4">Let AI generate comprehensive responses</p>
+                          <h3 className="font-semibold text-card-foreground mb-2">AI Processing</h3>
+                          <p className="text-sm text-muted-foreground mb-4">Let AI generate comprehensive responses</p>
                           <Button
                             onClick={() => setActiveSection("generate")}
                             disabled={!rfpData}
@@ -452,11 +447,11 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                         </CardContent>
                       </Card>
 
-                      <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-300">
-                        <CardContent className="p-6 text-center">
+                      <Card className="border border-border bg-card shadow-md hover:shadow-lg transition-all duration-300">
+                        <CardContent className="p-6 text-center text-card-foreground">
                           <Edit className="w-12 h-12 text-orange-600 mx-auto mb-4" />
-                          <h3 className="font-semibold text-gray-900 mb-2">Review & Edit</h3>
-                          <p className="text-sm text-gray-600 mb-4">Fine-tune the generated responses</p>
+                          <h3 className="font-semibold text-card-foreground mb-2">Review & Edit</h3>
+                          <p className="text-sm text-muted-foreground mb-4">Fine-tune the generated responses</p>
                           <Button
                             onClick={() => setActiveSection("edit")}
                             disabled={!generatedResponse}
@@ -514,8 +509,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                           <CardContent className="p-6">
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-                                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                                <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
+                                <p className="text-2xl font-bold text-card-foreground">{stat.value}</p>
                               </div>
                               <Icon className={`w-8 h-8 text-${stat.color}-600`} />
                             </div>
@@ -565,12 +560,12 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
               return (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">My Assigned RFPs</h2>
-                    <p className="text-gray-600">View and download RFPs assigned to you.</p>
+                    <h2 className="text-2xl font-bold text-card-foreground mb-2">My Assigned RFPs</h2>
+                    <p className="text-muted-foreground">View and download RFPs assigned to you.</p>
                   </div>
 
                   {loading && (
-                    <Alert className="mb-4 bg-blue-100 border-blue-200 text-blue-700 rounded-xl">
+                    <Alert className="mb-4 bg-muted border-border text-foreground rounded-xl">
                       <Activity className="h-4 w-4" />
                       <AlertDescription>Loading assigned RFPs...</AlertDescription>
                     </Alert>
@@ -582,7 +577,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                     </Alert>
                   )}
                   {success && (
-                    <Alert className="mb-4 bg-green-100 border-green-200 text-green-700 rounded-xl">
+                    <Alert className="mb-4 bg-muted border-border text-foreground rounded-xl">
                       <CheckCircle className="h-4 w-4" />
                       <AlertDescription>{success}</AlertDescription>
                     </Alert>
@@ -592,8 +587,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                     <CardContent className="p-0">
                       <Table className="min-w-full">
                         <TableHeader>
-                          <TableRow className="bg-gray-50">
-                            <TableHead>Filename</TableHead>
+                          <TableRow className="bg-muted">
+                            <TableHead className="text-muted-foreground">Filename</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Assigned Date</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
@@ -602,31 +597,18 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                         <TableBody>
                           {myRfps.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={5} className="text-center py-4 text-gray-500">
+                              <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
                                 No RFPs assigned to you.
                               </TableCell>
                             </TableRow>
                           ) : (
                             myRfps.map((rfp) => (
-                              <TableRow key={rfp.id} className="hover:bg-gray-50">
-                                <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
+                              <TableRow key={rfp.id} className="hover:bg-muted">
+                                <TableCell className="font-medium text-card-foreground">{rfp.filename}</TableCell>
                                 <TableCell>
-                                  <Badge
-                                    variant={rfp.status === "finished" ? "default" : "outline"}
-                                    className={`rounded-xl ${
-                                      rfp.status === "pending"
-                                        ? "bg-yellow-100 text-yellow-700"
-                                        : rfp.status === "in_progress"
-                                          ? "bg-blue-100 text-blue-700"
-                                          : rfp.status === "assigned"
-                                            ? "bg-purple-100 text-purple-700"
-                                            : "bg-green-100 text-green-700"
-                                    }`}
-                                  >
-                                    {rfp.status.replace(/_/g, " ")}
-                                  </Badge>
+                                  <Badge className={`rounded-xl ${rfp.status === "pending" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200" : rfp.status === "in_progress" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200" : rfp.status === "assigned" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200" : "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200"}`}>{rfp.status === "pending" ? "P" : rfp.status === "assigned" ? "A" : rfp.status === "finished" ? "F" : rfp.status.replace(/_/g, " ")}</Badge>
                                 </TableCell>
-                                <TableCell className="text-gray-500">{rfp.created_at}</TableCell>
+                                <TableCell className="text-muted-foreground">{rfp.created_at}</TableCell>
                                 <TableCell className="text-right">
                                   {/* Button to view original RFP - Renamed for clarity */}
                                   <Button
@@ -784,29 +766,29 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
               return (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">RFP History</h2>
-                    <p className="text-gray-600">View your past RFP processing activities</p>
+                    <h2 className="text-2xl font-bold text-card-foreground mb-2">RFP History</h2>
+                    <p className="text-muted-foreground">View your past RFP processing activities</p>
                   </div>
 
                   <Card className="border-0 shadow-lg">
                     <CardContent className="p-0">
                       <Table className="min-w-full">
                         <TableHeader>
-                          <TableRow className="bg-gray-50">
-                            <TableHead>Filename</TableHead>
+                          <TableRow className="bg-muted">
+                            <TableHead className="text-muted-foreground">Filename</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {finishedRfps.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={1} className="text-center py-4 text-gray-500">
+                              <TableCell colSpan={1} className="text-center py-4 text-muted-foreground">
                                 No finished RFPs yet.
                               </TableCell>
                             </TableRow>
                           ) : (
                             finishedRfps.map((rfp) => (
-                              <TableRow key={rfp.id} className="hover:bg-gray-50">
-                                <TableCell className="font-medium text-gray-900">{rfp.filename}</TableCell>
+                              <TableRow key={rfp.id} className="hover:bg-muted">
+                                <TableCell className="font-medium text-card-foreground">{rfp.filename}</TableCell>
                               </TableRow>
                             ))
                           )}
@@ -835,10 +817,10 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex dark:bg-gray-900">
+    <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-xl transform ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 dark:bg-gray-800 dark:shadow-none dark:border-r dark:border-gray-700`}
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-sidebar text-sidebar-foreground shadow-xl transform ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 border-r border-sidebar-border`}
       >
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3">
@@ -846,8 +828,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
               <Brain className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">{companyName || "Company"}</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Employee Portal</p>
+              <h1 className="text-lg font-bold text-sidebar-foreground">{companyName || "Company"}</h1>
+              <p className="text-xs text-muted-foreground">Employee Portal</p>
             </div>
           </div>
           <Button
@@ -878,10 +860,10 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                   disabled={isDisabled}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all duration-200 ${
                     isActive
-                      ? "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-800"
+                      ? "bg-primary/10 text-primary border border-primary"
                       : isDisabled
-                        ? "text-gray-400 cursor-not-allowed"
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+                        ? "text-muted-foreground cursor-not-allowed"
+                        : "text-sidebar-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
                   <Icon className="w-5 h-5" />
@@ -900,8 +882,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
               <User className="w-5 h-5 text-gray-600 dark:text-gray-300" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate dark:text-gray-100">{user.name}</p>
-              <p className="text-xs text-gray-500 truncate dark:text-gray-400">{user.company}</p>
+              <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
+              <p className="text-xs text-muted-foreground truncate">{user.company}</p>
             </div>
             <Badge className="bg-green-100 text-green-700 text-xs dark:bg-green-900 dark:text-green-200">
               Employee
@@ -922,7 +904,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
       {/* Main Content */}
       <div className="flex-1 lg:ml-0">
         {/* Top Bar */}
-        <div className="bg-white shadow-sm border-b border-gray-200 px-6 py-4 dark:bg-gray-800 dark:border-gray-700">
+        <div className="bg-card shadow-sm border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button
@@ -934,10 +916,8 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 <Menu className="w-5 h-5" />
               </Button>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900 capitalize dark:text-gray-100">
-                  {activeSection === "dashboard" ? "Dashboard" : activeSection.replace("-", " ")}
-                </h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <h1 className="text-xl font-semibold text-card-foreground capitalize">{activeSection === "dashboard" ? "Dashboard" : activeSection.replace("-", " ")}</h1>
+                <p className="text-sm text-muted-foreground">
                   {activeSection === "dashboard" && "Overview of your RFP processing workflow"}
                   {activeSection === "generate" && "Generate AI-powered responses"}
                   {activeSection === "edit" && "Review and edit generated responses"}
@@ -961,10 +941,10 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
                 return (
                   <div key={item.step} className="flex items-center gap-2">
                     <div
-                      className={`p-1.5 rounded-lg ${item.finished ? "bg-green-100 dark:bg-green-900" : "bg-gray-100 dark:bg-gray-700"}`}
+                      className={`p-1.5 rounded-lg ${item.finished ? "bg-green-100 dark:bg-green-900" : "bg-muted"}`}
                     >
                       <Icon
-                        className={`w-4 h-4 ${item.finished ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-gray-500"}`}
+                        className={`w-4 h-4 ${item.finished ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}
                       />
                     </div>
                     {index < 3 && (
@@ -981,7 +961,7 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
         </div>
 
         {/* Content Area */}
-        <div className="p-6">{renderContent()}</div>
+        <div className="p-6 bg-background text-foreground">{renderContent()}</div>
       </div>
 
       {/* Overlay for mobile */}
@@ -992,14 +972,14 @@ export default function EmployeeDashboard({ user, onLogout, token }: EmployeeDas
       {/* PDF Modal (for original RFP preview) */}
       {pdfModalOpen && pdfUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg shadow-lg max-w-3xl w-full p-6 relative dark:bg-gray-800 dark:text-gray-100">
+          <div className="bg-card rounded-lg shadow-lg max-w-3xl w-full p-6 relative text-card-foreground">
             <button
               className="absolute top-2 right-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
               onClick={() => setPdfModalOpen(false)}
             >
               <X className="w-6 h-6" />
             </button>
-            <h2 className="text-xl font-bold mb-4 dark:text-gray-100">Original RFP Document Preview</h2>
+            <h2 className="text-xl font-bold mb-4 dark:text-card-foreground">Original RFP Document Preview</h2>
             <div className="mb-4" style={{ height: "60vh" }}>
               <iframe src={pdfUrl} title="RFP PDF Preview" width="100%" height="100%" style={{ border: "none" }} />
             </div>
