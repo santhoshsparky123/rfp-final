@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Eye, EyeOff, Lock, Mail, User, AlertCircle, CheckCircle } from "lucide-react"
+import { useEffect as reactUseEffect } from "react"
 
 interface LoginProps {
   onLogin: (user: {
@@ -33,6 +34,34 @@ export default function Login({ onLogin }: LoginProps) {
     username: "",
     password: "",
   })
+reactUseEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("token");
+  const email = params.get("email");
+  const name = params.get("name");
+  let role = params.get("role");
+
+  if (token && role) {
+    localStorage.setItem("token", token);
+
+    // Normalize role: "UserRole.USER" → "user"
+    role = role.toLowerCase().split('.').pop()!;
+
+    onLogin({ id: "", email: email!, name: name!, role: role as any });
+
+    if (role === "admin") {
+      window.location.href = "/api/admin/dashboard";
+    } else if (role === "employee") {
+      window.location.href = "/api/employee/dashboard";
+    } else {
+      window.location.href = "/user/dashboard";
+    }
+  } else if (email && name) {
+    setRegisterForm({ ...registerForm, email, name });
+    setActiveTab("register");
+  }
+}, []);
+
 
   // Register form state
   const [registerForm, setRegisterForm] = useState({
@@ -41,6 +70,9 @@ export default function Login({ onLogin }: LoginProps) {
     password: "",
     confirmPassword: "",
   })
+
+  const [googleEmails, setGoogleEmails] = useState<string[] | null>(null)
+  const [selectedEmail, setSelectedEmail] = useState<string | null>(null)
 
   useEffect(() => {
     // Remove dark class from html to force light theme
@@ -153,6 +185,69 @@ export default function Login({ onLogin }: LoginProps) {
     }
   }
 
+  const handleGoogleLogin = () => {
+    try {
+      // Redirect the browser to the Google login endpoint
+      window.location.href = "http://localhost:8000/api/login/google";
+    } catch (error) {
+      console.error("Error during Google login:", error);
+      setError("Failed to connect to Google login. Please try again.");
+    }
+  };
+
+  const handleEmailSelection = async (email: string) => {
+    try {
+      const userCheckResponse = await fetch(`http://localhost:8000/api/user/check?email=${email}`);
+      const userExists = await userCheckResponse.json();
+      if (userExists) {
+        // Redirect to login page
+        setActiveTab("login");
+      } else {
+        // Pre-fill registration form
+        setRegisterForm({ ...registerForm, email, name: "" });
+      }
+      setGoogleEmails(null); // Close the email selection modal
+    } catch (error) {
+      console.error("Error during email selection:", error);
+      setError("Failed to process the selected email. Please try again.");
+    }
+  };
+
+  reactUseEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const email = params.get("email");
+    const name = params.get("name");
+
+    if (token) {
+      // If token is present, log the user in
+      localStorage.setItem("token", token);
+      fetch("http://localhost:8000/api/user/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error("Failed to fetch user info");
+          }
+          return response.json();
+        })
+        .then((user) => {
+          onLogin(user); // Pass user info to parent component
+          setActiveTab("dashboard"); // Redirect to dashboard
+        })
+        .catch((error) => {
+          console.error("Error fetching user info:", error);
+          setError("Failed to log in. Please try again.");
+        });
+    } else if (email && name) {
+      // If email and name are present, pre-fill the registration form
+      setRegisterForm({ ...registerForm, email, name });
+      setActiveTab("register");
+    }
+  }, [])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -261,6 +356,15 @@ export default function Login({ onLogin }: LoginProps) {
                     {loading ? "Signing in..." : "Sign In"}
                   </Button>
                 </form>
+
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg bg-transparent w-full h-12"
+                    onClick={handleGoogleLogin}
+                  >
+                    Continue with Google
+                  </Button>
               </TabsContent>
 
               <TabsContent value="register" className="mt-0 space-y-6">
@@ -350,7 +454,7 @@ export default function Login({ onLogin }: LoginProps) {
                       </div>
                     </div>
                   </div>
-
+                  
                   <Button
                     type="submit"
                     disabled={loading}
@@ -358,6 +462,14 @@ export default function Login({ onLogin }: LoginProps) {
                   >
                     {loading ? "Creating Account..." : "Create Account"}
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-blue-600 border-blue-600 hover:bg-blue-50 rounded-lg bg-transparent w-full h-12"
+                    onClick={handleGoogleLogin}
+                  >
+                    Continue with Google
+                  </Button> 
                 </form>
 
                 <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
@@ -387,6 +499,39 @@ export default function Login({ onLogin }: LoginProps) {
           <p>© 2024 RFP Response Generator. All rights reserved.</p>
         </div>
       </div>
+
+      {/* Google Email Selection Modal */}
+      {googleEmails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full">
+            <h3 className="text-lg font-bold mb-4">Select an Email</h3>
+            <ul className="space-y-2">
+              {googleEmails.map((email) => (
+                <li key={email} className="email-item">
+                  <button
+                    onClick={() => handleEmailSelection(email)}
+                    className="w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    {email}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4">
+              <button
+                onClick={() => setGoogleEmails(null)}
+                className="w-full h-12 bg-blue-600 text-white rounded-xl font-semibold shadow-md hover:bg-blue-700 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+function useEffect(arg0: () => void, arg1: never[]) {
+  throw new Error("Function not implemented.")
+}
+
