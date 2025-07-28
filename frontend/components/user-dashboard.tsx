@@ -744,7 +744,7 @@ export default function UserDashboard({ user, onLogout }: UserDashboardProps) {
                                       }`}
                                     >
                                       {response.status === "finished" && <CheckCircle className="w-3 h-3 mr-1" />}
-                                      {response.status}
+                                      {response.status === "pending" ? "P" : response.status === "assigned" ? "A" : (response.status === "finished" || response.status === "completed") ? "F" : response.status}
                                     </Badge>
                                   </TableCell>
                                   <TableCell>

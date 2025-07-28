@@ -809,7 +809,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                                       : "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200"
                               }`}
                             >
-                              {rfp.status.replace(/_/g, " ")}
+                              {rfp.status === "pending" ? "P" : rfp.status === "assigned" ? "A" : (rfp.status === "finished" || rfp.status === "completed") ? "F" : rfp.status.replace(/_/g, " ")}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-gray-700 dark:text-gray-300">
