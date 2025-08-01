@@ -11,6 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Eye, EyeOff, Lock, Mail, User, AlertCircle, CheckCircle } from "lucide-react"
 import { useEffect as reactUseEffect } from "react"
+import DirectPasswordReset from "@/components/forgetpassword"
+import Link from "next/link";
 
 interface LoginProps {
   onLogin: (user: {
@@ -31,7 +33,7 @@ export default function Login({ onLogin }: LoginProps) {
 
   // Login form state
   const [loginForm, setLoginForm] = useState({
-    username: "",
+    email: "",
     password: "",
   })
 reactUseEffect(() => {
@@ -86,7 +88,7 @@ reactUseEffect(() => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          username: loginForm.username,
+          email: loginForm.email,
           password: loginForm.password,
         }),
       })
@@ -104,9 +106,9 @@ reactUseEffect(() => {
       // Use the role and user data directly from the auth response
       onLogin({
         id: data.user_id.toString(),
-        email: loginForm.username, // We can use username as email for now, or get it from another endpoint if needed
+        email: loginForm.email, // We can use email as email for now, or get it from another endpoint if needed
         role: data.role,
-        name: loginForm.username,
+        name: loginForm.email,
         company: undefined, // Can be fetched later if needed
       })
     } catch (err) {
@@ -292,18 +294,18 @@ reactUseEffect(() => {
 
                 <form onSubmit={handleLogin} className="space-y-6">
                   <div className="space-y-2">
-                    <Label htmlFor="username" className="text-sm font-medium text-gray-700">
-                      Username
+                    <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+                      email
                     </Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                       <Input
-                        id="username"
+                        id="email"
                         type="text"
-                        value={loginForm.username}
-                        onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
+                        value={loginForm.email}
+                        onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
                         className="pl-10 h-12 rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                        placeholder="Enter your username"
+                        placeholder="Enter your email"
                         required
                       />
                     </div>
@@ -351,6 +353,10 @@ reactUseEffect(() => {
                   >
                     Continue with Google
                   </Button>
+                  <div className="text-right text-sm text-blue-600 hover:underline">
+  <Link href="/forgetpassword">Forgot Password?</Link>
+</div>
+
               </TabsContent>
 
               <TabsContent value="register" className="mt-0 space-y-6">

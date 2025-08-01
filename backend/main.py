@@ -16,6 +16,7 @@ from api.employee.proposal_edit_llm import router as proposal_edit_llm_router
 from api.pdf_url import router as pdf_url_router
 from api.google_oauth import router as google_oauth_router
 from starlette.middleware.sessions import SessionMiddleware
+from api.forget_pass import router as forget_pass
 # Initialize FastAPI app
 app = FastAPI(title="RFP Response Agent API")
 
@@ -72,6 +73,7 @@ app.include_router(rfp_messages_router)
 app.include_router(proposal_edit_llm_router)
 app.include_router(pdf_url_router)
 app.include_router(google_oauth_router)
+app.include_router(forget_pass)
 
 if __name__ == "__main__":
     import uvicorn

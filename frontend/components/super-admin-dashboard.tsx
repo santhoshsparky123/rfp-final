@@ -1,4 +1,3 @@
-// frontend/components/superadmin-dashboard.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -8,254 +7,304 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Crown, Users, LogOut, CheckCircle, AlertCircle, Building, Mail, Calendar, Activity } from "lucide-react"
-import { ThemeToggle } from "@/components/theme-toggle" // Import ThemeToggle
-
-interface User {
-  id: string
-  email: string
-  role: "super_admin"
-  name: string
-  company?: string
-}
+import { Crown, Users, LogOut, CheckCircle, AlertCircle, Building, Mail, Calendar, Activity, User } from "lucide-react"
 
 interface SuperAdminDashboardProps {
-  user: User
+  user: {
+    id: string
+    email: string
+    role: "super_admin"
+    name: string
+    company?: string
+  }
   onLogout: () => void
-  token: string // Ensure token is passed from page.tsx
 }
 
 interface Company {
   id: number
+  userid: number
   name: string
   subdomain: string
-  subscription_status: string // Matches backend string
+  subscription_status: string
   subscription_start?: string
   subscription_end?: string
   created_at?: string
-  username?: string // Corresponds to 'username' from fetch_username in backend
-  userid?: number
+  admin?: {
+    id: number
+    username: string
+    email: string
+    userid : number
+  }
+}
+interface U{
+  id : number
+  username : string
+  email : string
 }
 
-export default function SuperAdminDashboard({ user, onLogout, token }: SuperAdminDashboardProps) {
+export default function SuperAdminDashboard({ user, onLogout }: SuperAdminDashboardProps) {
   const [companies, setCompanies] = useState<Company[]>([])
+  const [users,setUsers] = useState<U[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [totalUsers, setTotalUsers] = useState<number>(0) // State for total users, could be fetched from another API
 
   useEffect(() => {
-    const fetchCompanies = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const response = await fetch("http://localhost:8000/api/all-companies", {
-          // Adjust URL if different
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`, // Include the bearer token for authentication
-          },
-        })
+    fetchCompanies()
+  }, [])
 
-        if (!response.ok) {
-          if (response.status === 401) {
-            throw new Error("Authentication failed. Please log in again.")
-          }
-          const errorData = await response.json()
-          throw new Error(errorData.detail || "Failed to fetch companies.")
-        }
-
-        const data = await response.json()
-        // Assuming the backend returns { "companies": [...] }
-        setCompanies(data.companies || [])
-
-        // This would ideally come from a separate API endpoint for total users
-        // For now, we can calculate based on fetched companies if appropriate or keep a dummy
-        // setTotalUsers(data.total_users_count || data.companies.length); // Example: if backend returns total_users_count
-        setTotalUsers(50) // Keeping dummy for total users for now, as backend `all-companies` doesn't provide it
-      } catch (err: any) {
-        console.error("Failed to fetch companies:", err)
-        setError(err.message || "Failed to load company data. Please try again.")
-      } finally {
-        setLoading(false)
+  const fetchCompanies = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        throw new Error("Authentication token not found")
       }
-    }
 
-    if (token) {
-      // Only fetch if token is available
-      fetchCompanies()
-    } else {
-      setLoading(false) // If no token, set loading to false immediately
-      setError("Authentication token not found. Please log in.")
+      const response = await fetch("http://localhost:8000/api/all-companies", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Failed to fetch companies")
+      }
+
+      const data = await response.json()
+      setCompanies(data.companies || [])
+    } catch (err) {
+      console.error("Error fetching companies:", err)
+      setError(err instanceof Error ? err.message : "Failed to fetch companies")
+    } finally {
+      setLoading(false)
     }
-  }, [token]) // Re-run effect if token changes
+  }
+
+  const totalUsers = companies.reduce((sum, company) => sum + (company.admin ? 1 : 0), 0)
+  const activeCompanies = companies.filter((company) => company.subscription_status === "active").length
+  const expiredCompanies = companies.filter((company) => company.subscription_status === "expired").length
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-700 text-gray-100 p-8 dark:from-gray-950 dark:to-gray-800">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 p-4">
       <div className="max-w-7xl mx-auto">
-        <header className="flex justify-between items-center mb-10 pb-5 border-b border-gray-600 dark:border-gray-700">
-          <div className="flex items-center space-x-4">
-            <Crown className="w-10 h-10 text-yellow-400" />
-            <h1 className="text-5xl font-extrabold text-white tracking-tight">Super Admin Dashboard</h1>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-gradient-to-br from-purple-600 to-indigo-700 rounded-2xl shadow-lg">
+              <Crown className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-800 via-blue-800 to-indigo-800 bg-clip-text text-transparent">
+                Super Admin Dashboard
+              </h1>
+              <p className="text-gray-600 mt-1">Manage companies and oversee the entire system</p>
+            </div>
           </div>
-          <div className="flex items-center space-x-4">
-            {" "}
-            {/* Wrap buttons and toggle */}
-            <Button
-              onClick={onLogout}
-              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow-md transition duration-300 flex items-center space-x-2 dark:bg-red-700 dark:hover:bg-red-800"
-            >
-              <LogOut className="w-5 h-5" />
-              <span>Logout</span>
-            </Button>
-            <ThemeToggle /> {/* Add ThemeToggle here */}
-          </div>
-        </header>
 
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Crown className="w-4 h-4 text-purple-600" />
+                {user.name}
+              </div>
+              <Badge className="mt-1 bg-purple-100 text-purple-700 hover:bg-purple-200">Super Admin</Badge>
+            </div>
+            <Button variant="outline" onClick={onLogout} className="rounded-xl border-gray-300 hover:bg-gray-50">
+              <LogOut className="w-4 h-4 mr-2" />
+              Logout
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          {[
+            {
+              title: "Total Companies",
+              value: companies.length,
+              icon: Building,
+              color: "from-blue-500 to-blue-600",
+              bgColor: "from-blue-50 to-blue-100",
+            },
+            {
+              title: "Active Companies",
+              value: activeCompanies,
+              icon: CheckCircle,
+              color: "from-green-500 to-green-600",
+              bgColor: "from-green-50 to-green-100",
+            },
+            {
+              title: "Expired Companies",
+              value: expiredCompanies,
+              icon: AlertCircle,
+              color: "from-red-500 to-red-600",
+              bgColor: "from-red-50 to-red-100",
+            },
+            {
+              title: "Total Users",
+              value: totalUsers,
+              icon: Users,
+              color: "from-purple-500 to-purple-600",
+              bgColor: "from-purple-50 to-purple-100",
+            },
+          ].map((stat) => {
+            const Icon = stat.icon
+            return (
+              <Card
+                key={stat.title}
+                className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
+              >
+                <div className={`h-2 bg-gradient-to-r ${stat.color}`} />
+                <CardHeader className={`pb-3 bg-gradient-to-br ${stat.bgColor}`}>
+                  <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <Icon className="w-5 h-5" />
+                    {stat.title}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <div
+                    className={`text-3xl font-bold bg-gradient-to-r ${stat.color} bg-clip-text text-transparent mb-1`}
+                  >
+                    {stat.value}
+                  </div>
+                  <p className="text-sm text-gray-600">System wide</p>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+
+        {/* Alerts */}
         {error && (
-          <Alert
-            variant="destructive"
-            className="mb-6 rounded-xl border-red-400 bg-red-900 text-red-100 dark:border-red-700 dark:bg-red-950"
-          >
+          <Alert variant="destructive" className="mb-6 rounded-xl border-red-200 bg-red-50">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription className="text-red-800">{error}</AlertDescription>
           </Alert>
         )}
 
-        <Card className="bg-gray-800 border border-gray-700 text-gray-100 rounded-xl shadow-lg dark:bg-gray-900 dark:border-gray-800">
+        {/* Main Content */}
+        <Card className="shadow-xl border-0 overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-purple-500 via-blue-500 to-indigo-500" />
+          <CardHeader className="bg-gradient-to-r from-purple-50 to-blue-50 pb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-3 text-2xl text-purple-800">
+                  <Building className="w-6 h-6" />
+                  Company Management
+                </CardTitle>
+                <p className="text-purple-700 mt-2">Monitor and manage all companies in the system</p>
+              </div>
+            </div>
+          </CardHeader>
+
           <CardContent className="p-6">
-            <Tabs defaultValue="overview" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 lg:grid-cols-3 bg-gray-700 mb-6 rounded-lg p-1 dark:bg-gray-800">
-                <TabsTrigger
-                  value="overview"
-                  className="data-[state=active]:bg-gray-900 data-[state=active]:text-white rounded-md dark:data-[state=active]:bg-gray-700"
-                >
-                  Overview
-                </TabsTrigger>
+            <Tabs defaultValue="companies" className="w-full">
+              <TabsList className="grid w-full grid-cols-1 mb-6 bg-gray-100 p-1 rounded-2xl">
                 <TabsTrigger
                   value="companies"
-                  className="data-[state=active]:bg-gray-900 data-[state=active]:text-white rounded-md dark:data-[state=active]:bg-gray-700"
+                  className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm"
                 >
-                  Companies
+                  <Building className="w-4 h-4 mr-2" />
+                  Companies ({companies.length})
                 </TabsTrigger>
-                {/* Add more tabs as needed, e.g., "Users", "Settings" */}
               </TabsList>
 
-              <TabsContent value="overview" className="mt-4">
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  <Card className="bg-gray-700 border border-gray-600 text-gray-100 rounded-xl shadow-md dark:bg-gray-800 dark:border-gray-700">
-                    <CardHeader>
-                      <CardTitle className="text-2xl font-bold text-white">System Health</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between p-3 bg-green-800 rounded-xl dark:bg-green-900">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="w-5 h-5 text-green-400" />
-                            <span className="font-medium">System Status</span>
-                          </div>
-                          <Badge className="bg-green-600 text-white dark:bg-green-700">Operational</Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-blue-800 rounded-xl dark:bg-blue-900">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-5 h-5 text-blue-400" />
-                            <span className="font-medium">Total Users</span>
-                          </div>
-                          <Badge variant="outline" className="bg-blue-600 text-white dark:bg-blue-700">
-                            {totalUsers}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-purple-800 rounded-xl dark:bg-purple-900">
-                          <div className="flex items-center gap-2">
-                            <Building className="w-5 h-5 text-purple-400" />
-                            <span className="font-medium">Total Companies</span>
-                          </div>
-                          <Badge variant="outline" className="bg-purple-600 text-white dark:bg-purple-700">
-                            {companies.length}
-                          </Badge>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="companies" className="mt-4">
-                <Card className="bg-gray-700 border border-gray-600 text-gray-100 rounded-xl shadow-md dark:bg-gray-800 dark:border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="text-2xl font-bold text-white">Managed Companies</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {loading ? (
-                      <div className="flex items-center justify-center p-8">
-                        <Activity className="h-8 w-8 animate-spin text-blue-400" />
-                        <p className="ml-4 text-lg">Loading companies...</p>
-                      </div>
-                    ) : companies.length === 0 ? (
-                      <Alert className="rounded-xl border-gray-600 bg-gray-800 text-gray-300 dark:border-gray-700 dark:bg-gray-900">
-                        <AlertCircle className="h-4 w-4 text-gray-500" />
-                        <AlertDescription>No companies registered yet.</AlertDescription>
-                      </Alert>
-                    ) : (
-                      <Table className="min-w-full divide-y divide-gray-600 dark:divide-gray-700">
-                        <TableHeader>
-                          <TableRow className="bg-gray-600 dark:bg-gray-700">
-                            <TableHead className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider rounded-tl-lg">
-                              Company Name
-                            </TableHead>
-                            <TableHead className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                              Subdomain
-                            </TableHead>
-                            <TableHead className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                              Subscription Status
-                            </TableHead>
-                            <TableHead className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                              Admin/User
-                            </TableHead>
-                            <TableHead className="py-3 px-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider rounded-tr-lg">
-                              Created At
-                            </TableHead>
+              <TabsContent value="companies" className="space-y-4">
+                {loading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading companies...</p>
+                  </div>
+                ) : companies.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Building className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No Companies Found</h3>
+                    <p className="text-gray-600">No companies have been created yet</p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-gray-200 overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold">Company</TableHead>
+                          <TableHead className="font-semibold">Subdomain</TableHead>
+                          <TableHead className="font-semibold">Admin</TableHead>
+                          <TableHead className="font-semibold">Status</TableHead>
+                          <TableHead className="font-semibold">Subscription</TableHead>
+                          <TableHead className="font-semibold">Created</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {companies.map((company) => (
+                          <TableRow key={company.id} className="hover:bg-gray-50">
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 bg-purple-100 rounded-lg">
+                                  <Building className="w-4 h-4 text-purple-600" />
+                                </div>
+                                <div>
+                                  <div className="font-medium text-gray-900">{company.name}</div>
+                                  <div className="text-sm text-gray-500">ID: {company.id}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium text-blue-600">{company.subdomain}.rfp.com</div>
+                            </TableCell>
+                            <TableCell>
+                              {company.userid ? (
+                                <div>
+                                  <div className="font-medium text-gray-900">{company.id}</div>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400">No admin assigned</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                className={`rounded-xl ${
+                                  company.subscription_status === "active"
+                                    ? "bg-green-100 text-green-700 hover:bg-green-200"
+                                    : company.subscription_status === "expired"
+                                      ? "bg-red-100 text-red-700 hover:bg-red-200"
+                                      : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                                }`}
+                              >
+                                {company.subscription_status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {company.subscription_end ? (
+                                <div className="text-sm">
+                                  <div className="text-gray-900">
+                                    Expires: {new Date(company.subscription_end).toLocaleDateString()}
+                                  </div>
+                                  {company.subscription_start && (
+                                    <div className="text-gray-500">
+                                      Started: {new Date(company.subscription_start).toLocaleDateString()}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400">No subscription</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {company.created_at ? (
+                                <div className="flex items-center gap-1 text-sm text-gray-600">
+                                  <Calendar className="w-3 h-3" />
+                                  {new Date(company.created_at).toLocaleDateString()}
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400">Unknown</span>
+                              )}
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody className="divide-y divide-gray-700 dark:divide-gray-800">
-                          {companies.map((company) => (
-                            <TableRow
-                              key={company.id}
-                              className="hover:bg-gray-700 transition-colors duration-200 dark:hover:bg-gray-700"
-                            >
-                              <TableCell className="py-3 px-4 whitespace-nowrap font-medium text-gray-100">
-                                {company.name}
-                              </TableCell>
-                              <TableCell className="py-3 px-4 whitespace-nowrap text-gray-300">
-                                {company.subdomain}
-                              </TableCell>
-                              <TableCell className="py-3 px-4 whitespace-nowrap">
-                                <Badge
-                                  className={`
-                                  ${company.subscription_status.toLowerCase() === "active" ? "bg-green-500 hover:bg-green-600 dark:bg-green-700 dark:hover:bg-green-800" : ""}
-                                  ${company.subscription_status.toLowerCase() === "trial" ? "bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-700 dark:hover:bg-yellow-800" : ""}
-                                  ${company.subscription_status.toLowerCase() === "inactive" ? "bg-red-500 hover:bg-red-600 dark:bg-red-700 dark:hover:bg-red-800" : ""}
-                                  text-white
-                                `}
-                                >
-                                  {company.subscription_status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="py-3 px-4 whitespace-nowrap text-gray-300 flex items-center gap-2">
-                                {company.username || "N/A"} {/* Display username from backend */}
-                                {company.username && <Mail className="w-4 h-4 text-blue-400" />}
-                              </TableCell>
-                              <TableCell className="py-3 px-4 whitespace-nowrap text-gray-300 flex items-center gap-2">
-                                {company.created_at ? new Date(company.created_at).toLocaleDateString() : "N/A"}
-                                {company.created_at && <Calendar className="w-4 h-4 text-purple-400" />}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </CardContent>
-                </Card>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </CardContent>
