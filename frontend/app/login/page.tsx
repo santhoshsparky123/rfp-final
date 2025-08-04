@@ -2,9 +2,12 @@
 
 import { useRouter } from "next/navigation"
 import Login from "@/components/login"
+import { useEffect } from "react";
 
 export default function LoginPage() {
   const router = useRouter()
+
+  // Remove the useEffect that manipulates the dark class
 
   const handleLogin = (user: {
     id: string
