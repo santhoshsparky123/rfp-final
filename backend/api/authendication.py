@@ -9,17 +9,17 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/api", tags=["Authentication"])
 
 class LoginRequest(BaseModel):
-    username: str
+    email: str
     password: str
 
 # Authentication endpoints
 @router.post("/auth/login", response_model=Token)
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     # Hardcoded superadmin bypass
-    if request.username == "superadmin" and request.password == "123456":
+    if request.email == "superadmin@gmail.com" and request.password == "123456":
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": "superadmin"}, expires_delta=access_token_expires
+            data={"sub": "superadmin@gmail.com"}, expires_delta=access_token_expires
         )
         return {
             "access_token": access_token,
@@ -28,16 +28,16 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             "role": "super_admin",
         }
     
-    user = db.query(User).filter(User.username == request.username).first()
+    user = db.query(User).filter(User.email == request.email).first()
     print("hello hello")
     if not user or not verify_password(request.password, user.hashed_password):
-        employee = db.query(Employee).filter(Employee.name == request.username).first()
+        employee = db.query(Employee).filter(Employee.name == request.email).first()
         print("hi")
         if not employee or not verify_password(request.password, employee.hashed_password):
             print("hello")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password"
+                detail="Incorrect email or password"
             )
         
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -54,7 +54,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     else:
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": user.username}, expires_delta=access_token_expires
+            data={"sub": user.email}, expires_delta=access_token_expires
         )
         
         return {
@@ -62,4 +62,4 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
             "token_type": "bearer",
             "user_id": user.id,
             "role": user.role,
-        }   
+        }

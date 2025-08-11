@@ -14,17 +14,23 @@ from api.fetch_username import router as fetch_username_router
 from api.rfp_messages import router as rfp_messages_router
 from api.employee.proposal_edit_llm import router as proposal_edit_llm_router
 from api.pdf_url import router as pdf_url_router
+from api.google_oauth import router as google_oauth_router
+from starlette.middleware.sessions import SessionMiddleware
+from api.forget_pass import router as forget_pass
 # Initialize FastAPI app
 app = FastAPI(title="RFP Response Agent API")
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add SessionMiddleware for OAuth2 session management
+app.add_middleware(SessionMiddleware, secret_key="your-secret-key")
 
 # Create necessary directories
 # os.makedirs("uploads", exist_ok=True)
@@ -66,6 +72,8 @@ app.include_router(fetch_username_router)
 app.include_router(rfp_messages_router)
 app.include_router(proposal_edit_llm_router)
 app.include_router(pdf_url_router)
+app.include_router(google_oauth_router)
+app.include_router(forget_pass)
 
 if __name__ == "__main__":
     import uvicorn
