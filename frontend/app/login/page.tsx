@@ -15,6 +15,7 @@ export default function LoginPage() {
     company?: string
   }) => {
     localStorage.setItem("user", JSON.stringify(user))
+    
 
     if (user.role === "super_admin") {
       router.push("/super-admin/dashboard")
