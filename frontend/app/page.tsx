@@ -1,15 +1,23 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { useRouter } from "next/navigation"
-import { Brain, Users, Building, Zap, ArrowRight, CheckCircle } from "lucide-react"
+
+import React from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Brain, Users, Building, Zap, ArrowRight, CheckCircle } from "lucide-react";
 
 export default function HomePage() {
-  const router = useRouter()
+  const router = useRouter();
+
+  // Force light mode for this page
+  React.useEffect(() => {
+    document.documentElement.classList.remove("dark");
+    document.body.classList.remove("dark");
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-100" data-force-light="true">
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -32,6 +40,7 @@ export default function HomePage() {
               >
                 Register
               </Button>
+              {/* ThemeToggle removed for home page */}
             </div>
           </div>
         </div>

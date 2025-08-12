@@ -1,13 +1,11 @@
 "use client"
 
+
 import { useRouter } from "next/navigation"
 import Login from "@/components/login"
-import { useEffect } from "react";
 
 export default function LoginPage() {
   const router = useRouter()
-
-  // Remove the useEffect that manipulates the dark class
 
   const handleLogin = (user: {
     id: string
@@ -31,3 +29,4 @@ export default function LoginPage() {
 
   return <Login onLogin={handleLogin} />
 }
+// ThemeToggle and dark mode logic removed for login page
