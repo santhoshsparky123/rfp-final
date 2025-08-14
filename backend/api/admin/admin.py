@@ -27,7 +27,6 @@ router = APIRouter(prefix="/api",tags=["Admin"])
 @router.post("/admin/create-employee")
 async def create_employee(
     employee_data: EmployeeCreate,
-    # user : User,
     # current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: Session = Depends(get_db)
 ):
@@ -43,7 +42,6 @@ async def create_employee(
     db.add(employee_entry)
     db.commit()
     db.refresh(employee_entry)
-
     return {"message": "Employee created successfully", "employee_db_id": employee_entry.id}
 
 
