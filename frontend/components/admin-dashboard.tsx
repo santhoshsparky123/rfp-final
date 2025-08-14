@@ -809,7 +809,7 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                                       : "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200"
                               }`}
                             >
-                              {rfp.status === "pending" ? "P" : rfp.status === "assigned" ? "A" : (rfp.status === "finished" || rfp.status === "completed") ? "F" : rfp.status.replace(/_/g, " ")}
+                              {rfp.status === "pending" ? "P" : rfp.status === "assigned" ? "A" : (rfp.status === "completed") ? "F" : rfp.status.replace(/_/g, " ")}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-gray-700 dark:text-gray-300">
@@ -1140,32 +1140,120 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                   <div>
                     <h3 className="text-lg font-semibold text-gray-700 mb-4 dark:text-gray-200">Account Settings</h3>
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between p-4 border rounded-lg dark:border-gray-700 dark:bg-gray-700">
+                      {/* Profile Update Form */}
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          setLoading(true);
+                          setError(null);
+                          setSuccess(null);
+                          try {
+                            const response = await fetch("http://localhost:8000/api/admin/update", {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({
+                                id: user.id,
+                                user_name: user.name,
+                                email: user.email,
+                              }),
+                            });
+                            if (!response.ok) {
+                              const errorData = await response.json();
+                              throw new Error(errorData.detail || `Update failed (${response.status})`);
+                            }
+                            setSuccess("Profile updated successfully!");
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : "Update failed. Please try again.");
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        className="flex flex-col gap-4 p-4 border rounded-lg dark:border-gray-700 dark:bg-gray-700"
+                      >
                         <div>
-                          <p className="font-medium dark:text-gray-100">Profile Information</p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">Update your account details</p>
+                          <Label htmlFor="profile-name" className="font-medium dark:text-gray-100">Name</Label>
+                          <Input
+                            id="profile-name"
+                            type="text"
+                            value={user.name}
+                            onChange={(e) => user.name = e.target.value}
+                            className="mt-1 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="profile-email" className="font-medium dark:text-gray-100">Email</Label>
+                          <Input
+                            id="profile-email"
+                            type="email"
+                            value={user.email}
+                            onChange={(e) => user.email = e.target.value}
+                            className="mt-1 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                            required
+                          />
                         </div>
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700 bg-transparent"
+                          type="submit"
+                          disabled={loading}
+                          className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl mt-2"
                         >
-                          Edit
+                          {loading ? "Updating..." : "Update Profile"}
                         </Button>
-                      </div>
-                      <div className="flex items-center justify-between p-4 border rounded-lg dark:border-gray-700 dark:bg-gray-700">
+                      </form>
+                      {/* Password Change Form */}
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          setLoading(true);
+                          setError(null);
+                          setSuccess(null);
+                          const form = e.target as HTMLFormElement;
+                          const newPassword = (form.elements.namedItem("new-password") as HTMLInputElement).value;
+                          try {
+                            const response = await fetch("http://localhost:8000/api/change-password", {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({
+                                id: user.id,
+                                new_password: newPassword,
+                              }),
+                            });
+                            if (!response.ok) {
+                              const errorData = await response.json();
+                              throw new Error(errorData.detail || `Password change failed (${response.status})`);
+                            }
+                            setSuccess("Password changed successfully!");
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : "Password change failed. Please try again.");
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        className="flex flex-col gap-4 p-4 border rounded-lg dark:border-gray-700 dark:bg-gray-700 mt-4"
+                      >
                         <div>
-                          <p className="font-medium dark:text-gray-100">Password</p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">Change your password</p>
+                          <Label htmlFor="new-password" className="font-medium dark:text-gray-100">New Password</Label>
+                          <Input
+                            id="new-password"
+                            type="password"
+                            className="mt-1 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                            required
+                          />
                         </div>
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700 bg-transparent"
+                          type="submit"
+                          disabled={loading}
+                          className="bg-green-600 hover:bg-green-700 text-white rounded-xl mt-2"
                         >
-                          Change
+                          {loading ? "Changing..." : "Change Password"}
                         </Button>
-                      </div>
+                      </form>
                     </div>
                   </div>
                 </div>

@@ -31,7 +31,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == request.email).first()
     print("hello hello")
     if not user or not verify_password(request.password, user.hashed_password):
-        employee = db.query(Employee).filter(Employee.name == request.email).first()
+        employee = db.query(Employee).filter(Employee.email == request.email).first()
         print("hi")
         if not employee or not verify_password(request.password, employee.hashed_password):
             print("hello")

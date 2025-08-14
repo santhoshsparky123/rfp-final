@@ -44,15 +44,6 @@ async def create_employee(
     db.commit()
     db.refresh(employee_entry)
 
-    new_users = User(
-            username=employee_data.username,
-            email=employee_data.email,
-            hashed_password=hashed_password,
-            role="employee",
-        )
-    db.add(new_users)
-    db.commit()
-    db.refresh(new_users)
     return {"message": "Employee created successfully", "employee_db_id": employee_entry.id}
 
 
