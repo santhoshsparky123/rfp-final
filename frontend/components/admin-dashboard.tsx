@@ -117,6 +117,10 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
   const [newDocument, setNewDocument] = useState<File | null>(null) // New state for selected document file
   const [addEmployeeMode, setAddEmployeeMode] = useState<"options" | "single" | "bulk">("options") // New state for add employee flow
 
+  // New states for toggling forms
+  const [showProfileForm, setShowProfileForm] = useState(false)
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
+
   // Function to fetch company ID
   const fetchCompanyId = useCallback(async (userId: string) => {
     try {
@@ -1141,119 +1145,138 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
                     <h3 className="text-lg font-semibold text-gray-700 mb-4 dark:text-gray-200">Account Settings</h3>
                     <div className="space-y-4">
                       {/* Profile Update Form */}
-                      <form
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          setLoading(true);
-                          setError(null);
-                          setSuccess(null);
-                          try {
-                            const response = await fetch("http://localhost:8000/api/admin/update", {
-                              method: "POST",
-                              headers: {
-                                "Content-Type": "application/json",
-                                Authorization: `Bearer ${token}`,
-                              },
-                              body: JSON.stringify({
-                                id: user.id,
-                                user_name: user.name,
-                                email: user.email,
-                              }),
-                            });
-                            if (!response.ok) {
-                              const errorData = await response.json();
-                              throw new Error(errorData.detail || `Update failed (${response.status})`);
+                      {showProfileForm && (
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            setLoading(true);
+                            setError(null);
+                            setSuccess(null);
+                            try {
+                              const response = await fetch("http://localhost:8000/api/admin/update", {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${token}`,
+                                },
+                                body: JSON.stringify({
+                                  id: user.id,
+                                  user_name: user.name,
+                                  email: user.email,
+                                }),
+                              });
+                              if (!response.ok) {
+                                const errorData = await response.json();
+                                throw new Error(errorData.detail || `Update failed (${response.status})`);
+                              }
+                              setSuccess("Profile updated successfully!");
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : "Update failed. Please try again.");
+                            } finally {
+                              setLoading(false);
                             }
-                            setSuccess("Profile updated successfully!");
-                          } catch (err) {
-                            setError(err instanceof Error ? err.message : "Update failed. Please try again.");
-                          } finally {
-                            setLoading(false);
-                          }
-                        }}
-                        className="flex flex-col gap-4 p-4 border rounded-lg dark:border-gray-700 dark:bg-gray-700"
-                      >
-                        <div>
-                          <Label htmlFor="profile-name" className="font-medium dark:text-gray-100">Name</Label>
-                          <Input
-                            id="profile-name"
-                            type="text"
-                            value={user.name}
-                            onChange={(e) => user.name = e.target.value}
-                            className="mt-1 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="profile-email" className="font-medium dark:text-gray-100">Email</Label>
-                          <Input
-                            id="profile-email"
-                            type="email"
-                            value={user.email}
-                            onChange={(e) => user.email = e.target.value}
-                            className="mt-1 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                            required
-                          />
-                        </div>
-                        <Button
-                          type="submit"
-                          disabled={loading}
-                          className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl mt-2"
+                          }}
+                          className="flex flex-col gap-4 p-4 border rounded-lg dark:border-gray-700 dark:bg-gray-700"
                         >
-                          {loading ? "Updating..." : "Update Profile"}
-                        </Button>
-                      </form>
+                          <div>
+                            <Label htmlFor="profile-name" className="font-medium dark:text-gray-100">Name</Label>
+                            <Input
+                              id="profile-name"
+                              type="text"
+                              defaultValue={user.name}
+                              onChange={(e) => user.name = e.target.value}
+                              className="mt-1 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="profile-email" className="font-medium dark:text-gray-100">Email</Label>
+                            <Input
+                              id="profile-email"
+                              type="email"
+                              defaultValue={user.email}
+                              onChange={(e) => user.email = e.target.value}
+                              className="mt-1 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                              required
+                            />
+                          </div>
+                          <Button
+                            type="submit"
+                            disabled={loading}
+                            className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl mt-2"
+                          >
+                            {loading ? "Updating..." : "Update Profile"}
+                          </Button>
+                        </form>
+                      )}
+                      <Button
+                        onClick={() => setShowProfileForm(!showProfileForm)}
+                        className="bg-blue-500 text-white"
+                      >
+                        {showProfileForm ? "Cancel" : "Update Profile"}
+                      </Button>
+                      
+                      
+                      <div className="mt-4"></div>
                       {/* Password Change Form */}
-                      <form
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          setLoading(true);
-                          setError(null);
-                          setSuccess(null);
-                          const form = e.target as HTMLFormElement;
-                          const newPassword = (form.elements.namedItem("new-password") as HTMLInputElement).value;
-                          try {
-                            const response = await fetch("http://localhost:8000/api/change-password", {
-                              method: "POST",
-                              headers: {
-                                "Content-Type": "application/json",
-                                Authorization: `Bearer ${token}`,
-                              },
-                              body: JSON.stringify({
-                                id: user.id,
-                                new_password: newPassword,
-                              }),
-                            });
-                            if (!response.ok) {
-                              const errorData = await response.json();
-                              throw new Error(errorData.detail || `Password change failed (${response.status})`);
+                      {showPasswordForm && (
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            setLoading(true);
+                            setError(null);
+                            setSuccess(null);
+                            const form = e.target as HTMLFormElement;
+                            const newPassword = (form.elements.namedItem("new-password") as HTMLInputElement).value;
+                            try {
+                              const response = await fetch("http://localhost:8000/api/change-password", {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${token}`,
+                                },
+                                body: JSON.stringify({
+                                  id: user.id,
+                                  new_password: newPassword,
+                                }),
+                              });
+                              if (!response.ok) {
+                                const errorData = await response.json();
+                                throw new Error(errorData.detail || `Password change failed (${response.status})`);
+                              }
+                              setSuccess("Password changed successfully!");
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : "Password change failed. Please try again.");
+                            } finally {
+                              setLoading(false);
                             }
-                            setSuccess("Password changed successfully!");
-                          } catch (err) {
-                            setError(err instanceof Error ? err.message : "Password change failed. Please try again.");
-                          } finally {
-                            setLoading(false);
-                          }
-                        }}
-                        className="flex flex-col gap-4 p-4 border rounded-lg dark:border-gray-700 dark:bg-gray-700 mt-4"
-                      >
-                        <div>
-                          <Label htmlFor="new-password" className="font-medium dark:text-gray-100">New Password</Label>
-                          <Input
-                            id="new-password"
-                            type="password"
-                            className="mt-1 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                            required
-                          />
-                        </div>
-                        <Button
-                          type="submit"
-                          disabled={loading}
-                          className="bg-green-600 hover:bg-green-700 text-white rounded-xl mt-2"
+                          }}
+                          className="flex flex-col gap-4 p-4 border rounded-lg dark:border-gray-700 dark:bg-gray-700 mt-4"
                         >
-                          {loading ? "Changing..." : "Change Password"}
-                        </Button>
-                      </form>
+                          <div>
+                            <Label htmlFor="new-password" className="font-medium dark:text-gray-100">New Password</Label>
+                            <Input
+                              id="new-password"
+                              type="password"
+                              className="mt-1 rounded-xl dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                              required
+                            />
+                          </div>
+                          <Button
+                            type="submit"
+                            disabled={loading}
+                            className="bg-green-600 hover:bg-green-700 text-white rounded-xl mt-2"
+                          >
+                            {loading ? "Changing..." : "Change Password"}
+                          </Button>
+                        </form>
+                      )}
+                      <Button
+                        onClick={() => setShowPasswordForm(!showPasswordForm)}
+                        className="bg-green-500 text-white"
+                      >
+                        {showPasswordForm ? "Cancel" : "Change Password"}
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -1334,17 +1357,11 @@ export default function AdminDashboard({ user, onLogout, token }: AdminDashboard
             }}
           >
             <DialogTrigger asChild>
-              <Button className="w-full bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg mb-3 dark:bg-blue-700 dark:hover:bg-blue-800">
-                <UserPlus className="w-4 h-4 mr-2" />
-                Add New Employee
-              </Button>
+          
             </DialogTrigger>
             <DialogContent className="sm:max-w-md rounded-2xl dark:bg-gray-800 dark:text-gray-100">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                  Add New Employee
-                </DialogTitle>
+                
                 <DialogDescription className="dark:text-gray-300">
                   {addEmployeeMode === "options" && "Choose how you want to add employees."}
                   {addEmployeeMode === "single" && "Create a new employee account with RFP processing capabilities."}
